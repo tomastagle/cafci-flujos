@@ -1,0 +1,49 @@
+name: CNV flujos FCI diarios
+
+on:
+  schedule:
+    # 01:30 UTC = ~22:30 ART. Mar-Sab UTC = noches de Lun-Vie ART (dias habiles).
+    - cron: "30 1 * * 2-6"
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "Cantidad de documentos historicos a bajar (0 = solo el ultimo dia)"
+        required: false
+        default: "0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cnv-daily
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+      - name: Sincronizar CNV
+        run: |
+          BF="${{ github.event.inputs.backfill }}"
+          if [ -n "$BF" ] && [ "$BF" != "0" ]; then
+            python sync_cnv.py --backfill "$BF"
+          else
+            python sync_cnv.py
+          fi
+      - name: Commit de la data
+        run: |
+          git config user.name  "cnv-bot"
+          git config user.email "cnv-bot@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "Sin cambios."
+          else
+            git commit -m "CNV flujos $(date -u +%F)"
+            git push
+          fi
