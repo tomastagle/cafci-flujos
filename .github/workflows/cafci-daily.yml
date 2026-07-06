@@ -1,0 +1,42 @@
+name: CAFCI flujos diarios
+
+on:
+  schedule:
+    # 01:30 UTC = ~22:30 ART. Mar-Sab UTC = noches de Lun-Vie ART (dias habiles).
+    - cron: "30 1 * * 2-6"
+  workflow_dispatch: {}   # permite correrlo a mano desde la pestana Actions
+
+permissions:
+  contents: write         # para commitear el JSON/history de vuelta al repo
+
+concurrency:
+  group: cafci-daily
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Sincronizar CAFCI
+        run: python sync_cafci.py
+
+      - name: Commit de la data
+        run: |
+          git config user.name  "cafci-bot"
+          git config user.email "cafci-bot@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "Sin cambios."
+          else
+            git commit -m "CAFCI flujos $(date -u +%F)"
+            git push
+          fi
