@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Sincronizador diario de FLUJOS de FCI desde la API publica de CAFCI.
+Sincronizador diario de FLUJOS de FCI desde la API publica de CAFCI (api.pub.cafci.org.ar).
 
-Corre SERVER-SIDE (GitHub Action / cron). El sandbox de Cowork y el navegador NO
-pueden pegarle a la API (sin internet / CORS); un servidor si.
-
-CLOUDFLARE: CAFCI suele bloquear IPs de nube (403) por 'huella' TLS. Por eso usamos
-curl_cffi con impersonate=chrome (imita a un navegador de verdad). Si no esta
-instalado, cae a requests normal (y probablemente el 403 vuelva -> ver el log).
+Corre SERVER-SIDE (GitHub Action / cron). Usa curl_cffi (impersonate=chrome) para el TLS.
+La API acepta SOLO el request exacto que hace el sitio cafci.org.ar (mismo query + Origin/
+Referer); por eso replicamos ese query tal cual (si no, responde 403 "Route not allowed").
 
 Pipeline:
-  1) universo(): fondos + clases (categoria=tipoRenta, gestora=gerente,
-     plazo=diasLiquidacion -> 0 = Money Market/T+0, 1 = T+1).
-  2) fichas():  por cada clase, ficha diaria (patrimonio + VCP + fecha).
-  3) history.csv: se anexa el snapshot del dia.
-  4) flujos():  flujo neto por clase = patrimonio_t - patrimonio_{t-1}*(vcp_t/vcp_{t-1}).
-  5) data/flujos_latest.json (lo que consume el reporte) + snapshot del dia.
+  1) universo(): 1 sola llamada /fondo?...include=...,clase_fondo&limit=0 -> fondos + clases
+     con gestora (gerente), categoria (tipoRenta), region, benchmark, plazo (diasLiquidacion).
+  2) fichas():  por clase, /fondo/{f}/clase/{c}/ficha -> patrimonio + VCP + moneda + fecha.
+  3) history.csv (append por clase/dia).
+  4) flujos():  flujo neto por clase = patrimonio_t - patrimonio_{t-1}*(vcp_t/vcp_{t-1}),
+     agregado por bucket / gestora / categoria.
+  5) data/flujos_latest.json (lo consume el reporte) + snapshot del dia.
 """
 import os
 import sys
@@ -27,7 +25,7 @@ import argparse
 import datetime as dt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --- cliente HTTP: preferimos curl_cffi (evita el bloqueo de Cloudflare) ---
+# --- cliente HTTP: curl_cffi imita a Chrome (TLS + headers); si no esta, requests ---
 try:
     from curl_cffi import requests as _rq
     _IMPERSONATE = "chrome"
@@ -35,16 +33,20 @@ try:
 except Exception:
     import requests as _rq
     _IMPERSONATE = None
-    _CLIENT = "requests (sin impersonate; si CAFCI da 403, instalar curl_cffi)"
+    _CLIENT = "requests (sin impersonate)"
 
-HOSTS = ["https://api.cafci.org.ar", "https://api.pub.cafci.org.ar"]
-WORKING_HOST = None  # se fija en universo()
+HOST = "https://api.pub.cafci.org.ar"
+
+# Query EXACTO que hace el sitio (no cambiar el include ni agregar 'order': el gateway lo valida)
+INC_UNIVERSO = ("/fondo?estado=1&include=entidad;depositaria,entidad;gerente,tipoRenta,"
+                "region,benchmark,clase_fondo&limit=0")
 
 HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"),
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
+    "X-Requested-With": "XMLHttpRequest",
     "Referer": "https://www.cafci.org.ar/",
     "Origin": "https://www.cafci.org.ar",
 }
@@ -57,13 +59,13 @@ HIST_COLS = ["fecha", "fondoId", "claseId", "categoria", "gestora", "plazo",
 
 # ----------------------------- HTTP --------------------------------------------
 def _raw_get(url):
-    kw = {"timeout": 40, "headers": HEADERS}
+    kw = {"timeout": 60, "headers": HEADERS}
     if _IMPERSONATE:
         kw["impersonate"] = _IMPERSONATE
     return _rq.get(url, **kw)
 
 
-def _get(url, tries=4, backoff=2.0):
+def _get(url, tries=4, backoff=2.5):
     for i in range(tries):
         try:
             r = _raw_get(url)
@@ -71,10 +73,10 @@ def _get(url, tries=4, backoff=2.0):
                 try:
                     return r.json()
                 except Exception:
-                    print("   ! 200 pero body no-JSON: %s" % (r.text or "")[:200], file=sys.stderr)
+                    print("   ! 200 no-JSON: %s" % (r.text or "")[:200], file=sys.stderr)
                     return None
-            body = (r.text or "").replace("\n", " ")[:200]
-            print("   ! HTTP %s :: %s :: %s" % (r.status_code, url, body), file=sys.stderr)
+            print("   ! HTTP %s :: %s :: %s" % (r.status_code, url,
+                  (r.text or "").replace("\n", " ")[:200]), file=sys.stderr)
             if r.status_code in (429, 500, 502, 503, 504):
                 time.sleep(backoff * (i + 1)); continue
             return None
@@ -94,60 +96,56 @@ def _num(x):
         return None
 
 
+def _sub(d, *path):
+    """Navega dict anidados de forma segura; devuelve None si falta algo."""
+    for k in path:
+        if not isinstance(d, dict):
+            return None
+        d = d.get(k)
+    return d
+
+
 # ----------------------------- 1) universo -------------------------------------
 def universo():
-    global WORKING_HOST
     print("Cliente HTTP: %s" % _CLIENT)
-    print("Bajando universo de fondos/clases...")
-    inc_attr = ("/fondo?estado=1&include=entidad;depositaria,entidad;gerente,tipoRenta,"
-                "moneda,horizonte,duration,tipo_fondo&limit=0&order=fondo.nombre")
-    inc_cls = "/fondo?estado=1&include=clase_fondo,entidad;gerente&limit=0"
-
-    dattr = dcls = None
-    for host in HOSTS:
-        print("  probando host %s ..." % host)
-        dattr = _get(host + inc_attr)
-        dcls = _get(host + inc_cls) if dattr else None
-        if dattr and dcls:
-            WORKING_HOST = host
-            break
-    if not dattr or not dcls:
-        raise SystemExit("No se pudo bajar el universo (ver los HTTP de arriba: 403=bloqueo, 503=caida).")
-    print("  host OK: %s" % WORKING_HOST)
-
-    attr = {}
-    for f in dattr.get("data", []):
-        attr[f["id"]] = dict(
+    print("Bajando universo de fondos/clases (%s) ..." % HOST)
+    d = _get(HOST + INC_UNIVERSO)
+    if not d:
+        raise SystemExit("No se pudo bajar el universo (ver HTTP arriba: 403=route/gate, 401=auth, 503=caida).")
+    uni = {}
+    for f in d.get("data", []):
+        fid = f.get("id")
+        base = dict(
             fondo=f.get("nombre"),
-            gestora=(f.get("gerente") or {}).get("nombreCorto"),
-            categoria=(f.get("tipoRenta") or {}).get("nombre"),
-            horizonte=(f.get("horizonte") or {}).get("nombre"),
-            duration=(f.get("duration") or {}).get("nombre"),
-            tipoFondo=(f.get("tipoFondo") or {}).get("nombre"),
-            moneda=(f.get("moneda") or {}).get("codigoCafci"),
+            gestora=_sub(f, "gerente", "nombreCorto") or _sub(f, "gerente", "nombre"),
+            categoria=_sub(f, "tipoRenta", "nombre"),
+            region=_sub(f, "region", "nombre") if isinstance(f.get("region"), dict) else f.get("region"),
+            benchmark=_sub(f, "benchmark", "nombre") if isinstance(f.get("benchmark"), dict) else f.get("benchmark"),
             plazo=f.get("diasLiquidacion"),
         )
-    uni = {}
-    for f in dcls.get("data", []):
-        fid = f["id"]
-        b = attr.get(fid, {})
-        for c in f.get("clase_fondos", []):
-            uni[(fid, c["id"])] = dict(b, fondoId=fid, claseId=c["id"],
-                                       clase=c.get("nombre"), ticker=c.get("tickerBloomberg"))
-    print("  -> %d clases en %d fondos" % (len(uni), len(attr)))
+        for c in (f.get("clase_fondos") or f.get("clases") or []):
+            cid = c.get("id")
+            uni[(fid, cid)] = dict(base, fondoId=fid, claseId=cid,
+                                   clase=c.get("nombre"), ticker=c.get("tickerBloomberg"))
+    if not uni:
+        raise SystemExit("Universo vacio: revisar la estructura con --discover.")
+    print("  -> %d clases" % len(uni))
     return uni
 
 
 # ----------------------------- 2) fichas ---------------------------------------
 def _ficha(fid, cid):
-    d = _get("%s/fondo/%s/clase/%s/ficha" % (WORKING_HOST, fid, cid))
+    d = _get("%s/fondo/%s/clase/%s/ficha" % (HOST, fid, cid))
     if not d or "data" not in d:
         return None
-    diaria = ((d["data"].get("info") or {}).get("diaria")) or {}
+    diaria = _sub(d, "data", "info", "diaria") or {}
     act = diaria.get("actual") or {}
-    return dict(fecha=diaria.get("referenceDay"),
-                patrimonio=_num(act.get("patrimonio")),
-                vcp=_num(act.get("vcpUnitario")))
+    return dict(
+        fecha=diaria.get("referenceDay"),
+        patrimonio=_num(act.get("patrimonio")),
+        vcp=_num(act.get("vcpUnitario")),
+        moneda=_sub(d, "data", "model", "fondo", "moneda", "codigoCafci"),
+    )
 
 
 def fichas(uni, workers=8):
@@ -169,8 +167,8 @@ def fichas(uni, workers=8):
 
 
 # ----------------------------- 3) history --------------------------------------
-def _iso(fecha_ddmmyyyy):
-    return dt.datetime.strptime(fecha_ddmmyyyy, "%d/%m/%Y").strftime("%Y-%m-%d")
+def _iso(f):
+    return dt.datetime.strptime(f, "%d/%m/%Y").strftime("%Y-%m-%d")
 
 
 def append_history(uni, fis):
@@ -185,7 +183,7 @@ def append_history(uni, fis):
             continue
         rows.append({"fecha": fecha_iso, "fondoId": k[0], "claseId": k[1],
                      "categoria": u.get("categoria"), "gestora": u.get("gestora"),
-                     "plazo": u.get("plazo"), "moneda": u.get("moneda"),
+                     "plazo": u.get("plazo"), "moneda": fi.get("moneda") or u.get("moneda"),
                      "patrimonio": fi["patrimonio"], "vcp": fi["vcp"]})
     if not rows:
         raise SystemExit("Sin filas para guardar (fichas vacias).")
@@ -281,14 +279,16 @@ def flujos(fecha_iso):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--discover", action="store_true",
-                    help="Baja universo + 3 fichas crudas y las muestra (para validar).")
+                    help="Baja universo + 2 fichas crudas y las muestra (para validar campos).")
     args = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
 
     uni = universo()
     if args.discover:
-        for k in list(uni)[:3]:
-            d = _get("%s/fondo/%s/clase/%s/ficha" % (WORKING_HOST, k[0], k[1]))
+        k0 = list(uni)[0]
+        print("\n== item universo ==\n%s" % json.dumps(uni[k0], ensure_ascii=False))
+        for k in list(uni)[:2]:
+            d = _get("%s/fondo/%s/clase/%s/ficha" % (HOST, k[0], k[1]))
             print("\n== ficha %s ==\n%s" % (k, json.dumps(d, ensure_ascii=False)[:1200] if d else "None"))
         return
 
