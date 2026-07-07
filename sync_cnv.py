@@ -47,6 +47,7 @@ import openpyxl
 
 CNV_LIST = "https://www.cnv.gov.ar/SitioWeb/FondosComunesInversion/CuotaPartes"
 AIF_VIEW = "https://aif2.cnv.gov.ar/Presentations/publicview/"
+AIF_VALET = "https://aif2.cnv.gov.ar/api/ValetKeyProvider/GetPublicValetKey/"
 BLOB_DL = "https://blob.cnv.gov.ar/BlobWebService.svc/DownloadBlob/"
 
 HEADERS = {"User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -63,6 +64,8 @@ _MESES = {"ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
 
 
 # ------------------------------- HTTP ------------------------------------------
+SESS = _rq.Session()   # persiste cookies entre publicview -> valetkey -> blob
+
 def _req(method, url, tries=5, backoff=2.5, **kw):
     kw.setdefault("timeout", 90)
     kw.setdefault("headers", HEADERS)
@@ -70,7 +73,7 @@ def _req(method, url, tries=5, backoff=2.5, **kw):
         kw["impersonate"] = _IMPERSONATE
     for i in range(tries):
         try:
-            r = _rq.request(method, url, **kw)
+            r = SESS.request(method, url, **kw)
             if r.status_code == 200:
                 return r
             print("   ! HTTP %s %s" % (r.status_code, url), file=sys.stderr)
@@ -104,23 +107,51 @@ def listar_documentos():
 
 # ------------------------------- 2) guid del archivo ---------------------------
 def file_guid(presentacion_guid):
+    """Devuelve (nombreArchivo, fileGUID, csrf_token) de la presentacion."""
     r = _req("GET", AIF_VIEW + presentacion_guid)
     if not r:
         return None
+    html = r.text
     m = re.search(r'"nombreArchivo":"([^"]*Planilla_Diaria[^"]*\.xlsx)"\s*,\s*"tamano":"[^"]*"\s*,\s*"guid":"([0-9a-f-]+)"',
-                  r.text, re.I)
+                  html, re.I)
     if not m:
-        # fallback: cualquier nombreArchivo .xlsx seguido de guid
-        m = re.search(r'"nombreArchivo":"([^"]*\.xlsx)"[^{}]*?"guid":"([0-9a-f-]+)"', r.text, re.I)
-    return (m.group(1), m.group(2)) if m else None
+        m = re.search(r'"nombreArchivo":"([^"]*\.xlsx)"[^{}]*?"guid":"([0-9a-f-]+)"', html, re.I)
+    if not m:
+        return None
+    tm = re.search(r'RequestVerificationToken"[^>]*\bvalue="([^"]+)"', html) or re.search(r'value="(CfDJ8[^"]+)"', html)
+    csrf = tm.group(1) if tm else ""
+    return (m.group(1), m.group(2), csrf)
 
 
-# ------------------------------- 3) descargar xlsx -----------------------------
-def descargar_xlsx(fguid):
-    r = _req("POST", BLOB_DL + fguid, data="")
+# ------------------------------- 3) descargar xlsx (valet key + CSRF) ----------
+def _valet_key(fguid):
+    r = _req("GET", AIF_VALET + fguid + "?operation=DownloadBlob")
     if not r:
         return None
-    return r.content
+    try:
+        return r.json().get("valetKeyData")
+    except Exception:
+        return None
+
+
+def descargar_xlsx(fguid, csrf=""):
+    vk = _valet_key(fguid)
+    if not vk:
+        print("   ! no se obtuvo la valet key", file=sys.stderr)
+        return None
+    url = BLOB_DL + fguid
+    # intento 1: cuerpo JSON {"ValetKey": ...} (como jquery.fileDownload)
+    hdr = dict(HEADERS, **{"X-CSRF-TOKEN": csrf, "Content-Type": "application/json",
+                           "Referer": "https://aif2.cnv.gov.ar/"})
+    r = _req("POST", url, headers=hdr, data=json.dumps({"ValetKey": vk}))
+    if not (r and r.content[:2] == b"PK"):
+        # intento 2: form-encoded
+        hdr2 = dict(HEADERS, **{"X-CSRF-TOKEN": csrf, "Referer": "https://aif2.cnv.gov.ar/"})
+        r = _req("POST", url, headers=hdr2, data={"ValetKey": vk})
+    if r and r.content[:2] == b"PK":
+        return r.content
+    print("   ! descarga blob fallo (status %s)" % getattr(r, "status_code", "?"), file=sys.stderr)
+    return None
 
 
 # ------------------------------- parseo xlsx -----------------------------------
@@ -336,7 +367,7 @@ def bajar_un_dia(fecha_target=None):
     if not fg:
         raise SystemExit("No se pudo extraer el guid del archivo.")
     print("  archivo: %s" % fg[0])
-    content = descargar_xlsx(fg[1])
+    content = descargar_xlsx(fg[1], fg[2])
     if not content:
         raise SystemExit("No se pudo descargar el xlsx (blob CNV).")
     fecha_iso, fondos = parse_planilla(content)
@@ -363,7 +394,7 @@ def main():
                 fg = file_guid(pres_guid)
                 if not fg:
                     continue
-                content = descargar_xlsx(fg[1])
+                content = descargar_xlsx(fg[1], fg[2])
                 if not content:
                     continue
                 fecha_iso, fondos = parse_planilla(content)
