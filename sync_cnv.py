@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Sincronizador de FLUJOS de FCI desde CNV (oficial, publico).  v5 (07-jul-2026)
+Sincronizador de FLUJOS de FCI desde CNV (oficial, publico).  v5.1 (07-jul-2026)
 
 Cambios v4 vs v3:
   1) MONEDA: los fondos en dolares (moneda USD/USB o clasif "Dolar Estadounidense") se separan
@@ -58,7 +58,7 @@ AGG = os.path.join(OUT_DIR, "cnv_agg_history.csv")
 AGG_COLS = ["fecha", "dim", "clave", "in", "out", "net", "aum"]
 DIMS = ("bucket", "gestora", "tipo_ger")
 BM_HIST = os.path.join(OUT_DIR, "bm_hist.csv")
-BM_COLS = ["fecha", "key", "nombre", "tipo", "moneda", "vcp", "vcp_prev", "aum", "vcp_mtd", "vcp_ytd", "vcp_1y"]
+BM_COLS = ["fecha", "key", "nombre", "tipo", "moneda", "vcp", "vcp_prev", "aum"]
 BM_KEY = "bull market"   # gestora de los 6 FCIs de Bull Market
 
 # umbral del guard de artefacto (fraccion del patrimonio del fondo)
@@ -231,8 +231,7 @@ def parse_planilla(content):
         if BM_KEY in ger.lower():
             bm.append(dict(nombre=str(c0).strip(), tipo=bk,
                            moneda=(str(r[1]).strip() if r[1] else ""),
-                           vcp=vcp, vcp_prev=_num(r[6]), aum=patr,
-                           vcp_mtd=_num(r[9]), vcp_ytd=_num(r[10]), vcp_1y=_num(r[11])))
+                           vcp=vcp, vcp_prev=_num(r[6]), aum=patr))
     return fecha_iso, out, bm
 
 
@@ -297,8 +296,7 @@ def append_bm(fecha_iso, bmrows):
             w.writerow({k: r.get(k, "") for k in BM_COLS})
         for b in bmrows:
             w.writerow({"fecha": fecha_iso, "key": b["nombre"], "nombre": b["nombre"], "tipo": b["tipo"],
-                        "moneda": b["moneda"], "vcp": b["vcp"], "vcp_prev": b["vcp_prev"], "aum": b["aum"],
-                        "vcp_mtd": b["vcp_mtd"], "vcp_ytd": b["vcp_ytd"], "vcp_1y": b["vcp_1y"]})
+                        "moneda": b["moneda"], "vcp": b["vcp"], "vcp_prev": b["vcp_prev"], "aum": b["aum"]})
 
 
 def load_bm():
@@ -307,7 +305,7 @@ def load_bm():
     with open(BM_HIST, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     for r in rows:
-        for k in ("vcp", "vcp_prev", "aum", "vcp_mtd", "vcp_ytd", "vcp_1y"):
+        for k in ("vcp", "vcp_prev", "aum"):
             r[k] = _num(r[k])
     return rows
 
@@ -324,9 +322,19 @@ def build_bm_funds(cierre):
     if cierre not in fechas:
         cierre = fechas[-1]
     vcp_by = {(r["key"], r["fecha"]): r["vcp"] for r in rows}
+    fset = sorted(dt.date.fromisoformat(f) for f in fechas)
     c = dt.date.fromisoformat(cierre)
-    prevs = [f for f in fechas if dt.date.fromisoformat(f) <= c - dt.timedelta(days=7)]
-    fw = prevs[-1] if prevs else None
+    idx = fset.index(c) if c in fset else len(fset) - 1
+
+    def ref_date(target):
+        prev = [f for f in fset if f <= target]
+        return prev[-1].isoformat() if prev else None
+
+    starts = {"1D": fset[idx - 1].isoformat() if idx > 0 else None,
+              "WTD": ref_date(c - dt.timedelta(days=7)),
+              "MTD": ref_date(dt.date(c.year, c.month, 1) - dt.timedelta(days=1)),
+              "YTD": ref_date(dt.date(c.year, 1, 1) - dt.timedelta(days=1)),
+              "1Y": ref_date(c - dt.timedelta(days=365))}
     latest = [r for r in rows if r["fecha"] == cierre]
     grupos = {}
     for r in latest:
@@ -335,16 +343,22 @@ def build_bm_funds(cierre):
     for base, clases in grupos.items():
         rep = max(clases, key=lambda r: (r["aum"] or 0))
         aum_tot = sum((r["aum"] or 0) for r in clases)
-        vcp = rep["vcp"]
-        def ret(ref):
+        vcp = rep["vcp"]; key = rep["key"]
+
+        def ret(win):
+            if win == "1D" and rep.get("vcp_prev"):
+                ref = rep["vcp_prev"]
+            else:
+                f0 = starts.get(win)
+                ref = vcp_by.get((key, f0)) if f0 else None
             return (vcp / ref - 1) if (vcp and ref) else None
-        r1d = ret(rep["vcp_prev"])
-        rwtd = ret(vcp_by.get((rep["key"], fw))) if fw else None
+
+        r1d = ret("1D")
         out.append({"nombre": base, "tipo": rep["tipo"], "moneda": rep["moneda"],
                     "vcp": vcp, "aum": aum_tot, "es_mm": rep["tipo"].startswith("Money Market"),
                     "tna": (r1d * 365 if r1d is not None else None),
-                    "ret": {"1D": r1d, "WTD": rwtd, "MTD": ret(rep["vcp_mtd"]),
-                            "YTD": ret(rep["vcp_ytd"]), "1Y": ret(rep["vcp_1y"])}})
+                    "ret": {"1D": r1d, "WTD": ret("WTD"), "MTD": ret("MTD"),
+                            "YTD": ret("YTD"), "1Y": ret("1Y")}})
     out.sort(key=lambda z: -(z["aum"] or 0))
     return out
 
