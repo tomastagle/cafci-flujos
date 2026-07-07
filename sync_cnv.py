@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Sincronizador de FLUJOS de FCI desde CNV (oficial, publico).  v2 (07-jul-2026)
+Sincronizador de FLUJOS de FCI desde CNV (oficial, publico).  v3 (07-jul-2026)
 
-CAMBIO CLAVE v2 (fix de exactitud): el flujo diario se calcula DENTRO del mismo archivo
-(columnas cuotapartes HOY vs AYER de la Planilla Diaria), NO cruzando dos archivos de dias
-distintos (que pueden ser revisiones diferentes de CNV y daban error). Validado: coincide con
-fonditos casi exacto. Se guarda el flujo diario por fondo/fecha; las ventanas = suma de diarios.
+CAMBIO CLAVE v3 (peso): el historico se guarda AGREGADO POR DIA (cnv_agg_history.csv), una fila por
+(fecha, dimension, clave) con in/out/net/aum, en vez de una fila por fondo. Pasa de ~2000 filas/dia
+a ~50 => un ano entero entra en pocos MB (antes ~60MB, GitHub lo rechazaba). El reporte usa justo
+estos agregados (por bucket / gestora / tipo de gerente), no el fondo individual.
 
-Ademas v2: tipo de gerente (Independiente/Bancaria, lista de bancos ex fonditos), serie diaria
-de neto (para barras), y AUM por tipo/gestora/tipo-gerente.
+Se mantiene de v2: flujo diario intra-archivo (cuotapartes HOY vs AYER del mismo xlsx), tipo de
+gerente (Independiente/Bancaria), y el JSON de salida (flujos_latest.json) con la MISMA estructura
+(por_bucket/por_gestora/por_tipo_ger/serie_diaria/aum_por_*), asi macro_flujos.py no cambia su parseo.
+Nota: el in/out por ventana es la suma de los in/out DIARIOS de esa dimension (flujo bruto del
+periodo); el net es identico a sumar netos. En 1D coincide exacto con el criterio por-fondo.
 
 Circuito de descarga (sin token, publico):
   1) GET  www.cnv.gov.ar/.../CuotaPartes  -> (fecha_doc, GUID presentacion del link al AIF)
@@ -49,8 +52,9 @@ HEADERS = {"User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit
 SESS = _rq.Session()
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-HISTORY = os.path.join(OUT_DIR, "cnv_history.csv")
-HIST_COLS = ["fecha", "key", "fondo", "gestora", "tipo_ger", "bucket", "moneda", "aum", "flujo"]
+AGG = os.path.join(OUT_DIR, "cnv_agg_history.csv")
+AGG_COLS = ["fecha", "dim", "clave", "in", "out", "net", "aum"]
+DIMS = ("bucket", "gestora", "tipo_ger")
 
 _MESES = {"ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
           "jul": 7, "ago": 8, "sep": 9, "oct": 10, "nov": 11, "dic": 12}
@@ -191,41 +195,55 @@ def parse_planilla(content):
                 except Exception:
                     pass
         flujo = (cn - cp) * vcp / 1000.0 if (cn is not None and cp is not None) else None
-        cod_cafci = r[20]
-        key = str(cod_cafci).strip() if cod_cafci not in (None, "") else str(c0).strip()
         ger = str(r[23]).strip() if r[23] else "?"
-        out.append(dict(key=key, fondo=str(c0).strip(), gestora=ger, tipo_ger=tipo_gerente(ger),
-                        bucket=bucket(clasif, r[37], r[1]), moneda=(str(r[1]).strip() if r[1] else None),
-                        aum=patr, flujo=flujo))
+        out.append(dict(fondo=str(c0).strip(), gestora=ger, tipo_ger=tipo_gerente(ger),
+                        bucket=bucket(clasif, r[37], r[1]), aum=patr, flujo=flujo))
     return fecha_iso, out
 
 
-# ------------------------------- history ---------------------------------------
-def append_history(fecha_iso, filas):
+def agregar_dia(filas):
+    """De filas por fondo -> filas agregadas (dim, clave, in, out, net, aum)."""
+    acc = {}  # (dim, clave) -> [in, out, net, aum]
+    for f in filas:
+        fl = f["flujo"]; a = f["aum"] or 0.0
+        for dim in DIMS:
+            clave = f.get(dim) or "?"
+            d = acc.setdefault((dim, clave), [0.0, 0.0, 0.0, 0.0])
+            if fl is not None:
+                if fl >= 0:
+                    d[0] += fl
+                else:
+                    d[1] += fl
+                d[2] += fl
+            d[3] += a
+    return [(dim, clave, v[0], v[1], v[2], v[3]) for (dim, clave), v in acc.items()]
+
+
+# ------------------------------- history (agregado) ----------------------------
+def append_agg(fecha_iso, aggrows):
     os.makedirs(OUT_DIR, exist_ok=True)
-    # reemplaza la fecha si ya existe (para captar revisiones)
     prev = []
-    if os.path.exists(HISTORY):
-        with open(HISTORY, newline="", encoding="utf-8") as fh:
+    if os.path.exists(AGG):
+        with open(AGG, newline="", encoding="utf-8") as fh:
             prev = [r for r in csv.DictReader(fh) if r["fecha"] != fecha_iso]
-    with open(HISTORY, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=HIST_COLS); w.writeheader()
+    with open(AGG, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=AGG_COLS); w.writeheader()
         for r in prev:
-            w.writerow({k: r.get(k, "") for k in HIST_COLS})
-        for f in filas:
-            w.writerow({"fecha": fecha_iso, "key": f["key"], "fondo": f["fondo"], "gestora": f["gestora"],
-                        "tipo_ger": f["tipo_ger"], "bucket": f["bucket"], "moneda": f["moneda"],
-                        "aum": f["aum"], "flujo": f["flujo"]})
-    print("   history: %d filas para %s (revisiones reemplazadas)" % (len(filas), fecha_iso))
+            w.writerow({k: r.get(k, "") for k in AGG_COLS})
+        for (dim, clave, i, o, n, a) in aggrows:
+            w.writerow({"fecha": fecha_iso, "dim": dim, "clave": clave,
+                        "in": "%.2f" % i, "out": "%.2f" % o, "net": "%.2f" % n, "aum": "%.2f" % a})
+    print("   agg: %d filas para %s (revisiones reemplazadas)" % (len(aggrows), fecha_iso))
 
 
-def load_history():
-    if not os.path.exists(HISTORY):
+def load_agg():
+    if not os.path.exists(AGG):
         return []
-    with open(HISTORY, newline="", encoding="utf-8") as fh:
+    with open(AGG, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     for r in rows:
-        r["aum"] = _num(r["aum"]); r["flujo"] = _num(r["flujo"])
+        for k in ("in", "out", "net", "aum"):
+            r[k] = _num(r[k]) or 0.0
     return rows
 
 
@@ -247,67 +265,64 @@ def _starts(fechas, cierre):
 
 
 def flujos(cierre):
-    rows = load_history()
+    rows = load_agg()
     if not rows:
         return None
     fechas = sorted({r["fecha"] for r in rows})
     if cierre not in fechas:
         cierre = fechas[-1]
     starts = _starts(fechas, cierre)
-    # atributos por fondo del dia de cierre
-    attr = {}
-    for r in rows:
-        if r["fecha"] == cierre:
-            attr[r["key"]] = dict(bucket=r["bucket"], gestora=r["gestora"] or "?", tipo_ger=r["tipo_ger"] or "?")
 
-    def suma_ventana(win):
+    def agg_win(win, dim):
         f0 = starts.get(win)
         if not f0:
             return {}
-        acc = {}
+        m = {}
         for r in rows:
-            if r["flujo"] is None:
+            if r["dim"] != dim:
                 continue
             if f0 < r["fecha"] <= cierre:
-                acc[r["key"]] = acc.get(r["key"], 0.0) + r["flujo"]
-        return acc
-
-    def agg(win, dim):
-        fl = suma_ventana(win); m = {}
-        for k, v in fl.items():
-            key = attr.get(k, {}).get(dim, "?")
-            d = m.setdefault(key, {"in": 0.0, "out": 0.0, "net": 0.0})
-            (d.__setitem__("in", d["in"] + v) if v >= 0 else d.__setitem__("out", d["out"] + v))
-            d["net"] += v
+                d = m.setdefault(r["clave"], {"in": 0.0, "out": 0.0, "net": 0.0})
+                d["in"] += r["in"]; d["out"] += r["out"]; d["net"] += r["net"]
         return dict(sorted(m.items(), key=lambda kv: kv[1]["net"], reverse=True))
 
-    # serie diaria de neto (industria) ultimos 40 dias
+    # serie diaria de neto de la industria (suma de net del dim 'bucket' por fecha), ult. 40
     dia = {}
     for r in rows:
-        if r["flujo"] is not None:
-            dia[r["fecha"]] = dia.get(r["fecha"], 0.0) + r["flujo"]
+        if r["dim"] == "bucket":
+            dia[r["fecha"]] = dia.get(r["fecha"], 0.0) + r["net"]
     serie = [[f, round(dia[f])] for f in fechas if f in dia][-40:]
 
-    # AUM del dia de cierre
-    aum_b, aum_g, aum_t = {}, {}, {}
-    for r in rows:
-        if r["fecha"] == cierre and r["aum"]:
-            aum_b[r["bucket"]] = aum_b.get(r["bucket"], 0) + r["aum"]
-            aum_g[r["gestora"] or "?"] = aum_g.get(r["gestora"] or "?", 0) + r["aum"]
-            aum_t[r["tipo_ger"] or "?"] = aum_t.get(r["tipo_ger"] or "?", 0) + r["aum"]
+    # AUM del dia de cierre por dimension
+    def aum_dim(dim):
+        m = {}
+        for r in rows:
+            if r["fecha"] == cierre and r["dim"] == dim:
+                m[r["clave"]] = m.get(r["clave"], 0.0) + r["aum"]
+        return dict(sorted(m.items(), key=lambda kv: -kv[1]))
 
     res = {"cierre": cierre, "ventanas_inicio": starts,
-           "por_bucket": {w: agg(w, "bucket") for w in WINDOWS},
-           "por_gestora": {w: agg(w, "gestora") for w in WINDOWS},
-           "por_tipo_ger": {w: agg(w, "tipo_ger") for w in WINDOWS},
+           "por_bucket": {w: agg_win(w, "bucket") for w in WINDOWS},
+           "por_gestora": {w: agg_win(w, "gestora") for w in WINDOWS},
+           "por_tipo_ger": {w: agg_win(w, "tipo_ger") for w in WINDOWS},
            "serie_diaria": serie,
-           "aum_por_bucket": dict(sorted(aum_b.items(), key=lambda kv: -kv[1])),
-           "aum_por_gestora": dict(sorted(aum_g.items(), key=lambda kv: -kv[1])),
-           "aum_por_tipo_ger": dict(sorted(aum_t.items(), key=lambda kv: -kv[1]))}
+           "aum_por_bucket": aum_dim("bucket"),
+           "aum_por_gestora": aum_dim("gestora"),
+           "aum_por_tipo_ger": aum_dim("tipo_ger")}
     return res
 
 
 # ------------------------------- orquestacion ----------------------------------
+def _bajar(pres):
+    fg = file_guid(pres)
+    if not fg:
+        return None, None
+    content = descargar_xlsx(fg[1], fg[2])
+    if not content:
+        return None, None
+    return parse_planilla(content)
+
+
 def bajar_un_dia(fecha_target=None):
     docs = listar_documentos()
     if not docs:
@@ -320,15 +335,11 @@ def bajar_un_dia(fecha_target=None):
     else:
         fecha_doc, pres = docs[0]
     print("Documento %s (%s)" % (fecha_doc, pres))
-    fg = file_guid(pres)
-    if not fg:
-        raise SystemExit("Sin guid de archivo.")
-    content = descargar_xlsx(fg[1], fg[2])
-    if not content:
-        raise SystemExit("No se pudo descargar el xlsx.")
-    fecha_iso, filas = parse_planilla(content)
+    fecha_iso, filas = _bajar(pres)
+    if filas is None:
+        raise SystemExit("No se pudo descargar/parsear el xlsx.")
     print("  %d fondos (fecha %s)" % (len(filas), fecha_iso))
-    append_history(fecha_iso or fecha_doc, filas)
+    append_agg(fecha_iso or fecha_doc, agregar_dia(filas))
     return fecha_iso or fecha_doc
 
 
@@ -346,14 +357,10 @@ def main():
                 continue
             vistas.add(fecha_doc)
             try:
-                fg = file_guid(pres)
-                if not fg:
+                fecha_iso, filas = _bajar(pres)
+                if filas is None:
                     continue
-                content = descargar_xlsx(fg[1], fg[2])
-                if not content:
-                    continue
-                fecha_iso, filas = parse_planilla(content)
-                append_history(fecha_iso or fecha_doc, filas)
+                append_agg(fecha_iso or fecha_doc, agregar_dia(filas))
                 time.sleep(1.0)
             except Exception as e:
                 print("  ! backfill %s: %s" % (fecha_doc, str(e)[:80]), file=sys.stderr)
