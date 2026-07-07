@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Sincronizador de FLUJOS de FCI desde CNV (oficial, publico).  v4 (07-jul-2026)
+Sincronizador de FLUJOS de FCI desde CNV (oficial, publico).  v5 (07-jul-2026)
 
 Cambios v4 vs v3:
   1) MONEDA: los fondos en dolares (moneda USD/USB o clasif "Dolar Estadounidense") se separan
@@ -57,6 +57,9 @@ OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 AGG = os.path.join(OUT_DIR, "cnv_agg_history.csv")
 AGG_COLS = ["fecha", "dim", "clave", "in", "out", "net", "aum"]
 DIMS = ("bucket", "gestora", "tipo_ger")
+BM_HIST = os.path.join(OUT_DIR, "bm_hist.csv")
+BM_COLS = ["fecha", "key", "nombre", "tipo", "moneda", "vcp", "vcp_prev", "aum", "vcp_mtd", "vcp_ytd", "vcp_1y"]
+BM_KEY = "bull market"   # gestora de los 6 FCIs de Bull Market
 
 # umbral del guard de artefacto (fraccion del patrimonio del fondo)
 MAX_FLUJO_FRAC = 0.85
@@ -199,6 +202,7 @@ def parse_planilla(content):
     clasif = None
     fecha_iso = None
     out = []
+    bm = []
     for r in rows:
         c0 = r[0]
         vcp = _num(r[5]); patr = _num(r[14]); cn = _num(r[12]); cp = _num(r[13])
@@ -221,9 +225,15 @@ def parse_planilla(content):
             if ref > 0 and abs(f) <= MAX_FLUJO_FRAC * ref:
                 flujo = f
         ger = str(r[23]).strip() if r[23] else "?"
+        bk = bucket(clasif, r[37], r[1])
         out.append(dict(fondo=str(c0).strip(), gestora=ger, tipo_ger=tipo_gerente(ger),
-                        bucket=bucket(clasif, r[37], r[1]), aum=patr, flujo=flujo))
-    return fecha_iso, out
+                        bucket=bk, aum=patr, flujo=flujo))
+        if BM_KEY in ger.lower():
+            bm.append(dict(nombre=str(c0).strip(), tipo=bk,
+                           moneda=(str(r[1]).strip() if r[1] else ""),
+                           vcp=vcp, vcp_prev=_num(r[6]), aum=patr,
+                           vcp_mtd=_num(r[9]), vcp_ytd=_num(r[10]), vcp_1y=_num(r[11])))
+    return fecha_iso, out, bm
 
 
 def agregar_dia(filas):
@@ -273,6 +283,72 @@ def load_agg():
 
 
 # ------------------------------- flujos (ventanas = suma de diarios) -----------
+def append_bm(fecha_iso, bmrows):
+    if not bmrows:
+        return
+    os.makedirs(OUT_DIR, exist_ok=True)
+    prev = []
+    if os.path.exists(BM_HIST):
+        with open(BM_HIST, newline="", encoding="utf-8") as fh:
+            prev = [r for r in csv.DictReader(fh) if r["fecha"] != fecha_iso]
+    with open(BM_HIST, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=BM_COLS); w.writeheader()
+        for r in prev:
+            w.writerow({k: r.get(k, "") for k in BM_COLS})
+        for b in bmrows:
+            w.writerow({"fecha": fecha_iso, "key": b["nombre"], "nombre": b["nombre"], "tipo": b["tipo"],
+                        "moneda": b["moneda"], "vcp": b["vcp"], "vcp_prev": b["vcp_prev"], "aum": b["aum"],
+                        "vcp_mtd": b["vcp_mtd"], "vcp_ytd": b["vcp_ytd"], "vcp_1y": b["vcp_1y"]})
+
+
+def load_bm():
+    if not os.path.exists(BM_HIST):
+        return []
+    with open(BM_HIST, newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    for r in rows:
+        for k in ("vcp", "vcp_prev", "aum", "vcp_mtd", "vcp_ytd", "vcp_1y"):
+            r[k] = _num(r[k])
+    return rows
+
+
+def _base_fondo(n):
+    return re.split(r"\s*[-\u2013]?\s*Clase\b", n, flags=re.I)[0].strip()
+
+
+def build_bm_funds(cierre):
+    rows = load_bm()
+    if not rows:
+        return []
+    fechas = sorted({r["fecha"] for r in rows})
+    if cierre not in fechas:
+        cierre = fechas[-1]
+    vcp_by = {(r["key"], r["fecha"]): r["vcp"] for r in rows}
+    c = dt.date.fromisoformat(cierre)
+    prevs = [f for f in fechas if dt.date.fromisoformat(f) <= c - dt.timedelta(days=7)]
+    fw = prevs[-1] if prevs else None
+    latest = [r for r in rows if r["fecha"] == cierre]
+    grupos = {}
+    for r in latest:
+        grupos.setdefault(_base_fondo(r["nombre"]), []).append(r)
+    out = []
+    for base, clases in grupos.items():
+        rep = max(clases, key=lambda r: (r["aum"] or 0))
+        aum_tot = sum((r["aum"] or 0) for r in clases)
+        vcp = rep["vcp"]
+        def ret(ref):
+            return (vcp / ref - 1) if (vcp and ref) else None
+        r1d = ret(rep["vcp_prev"])
+        rwtd = ret(vcp_by.get((rep["key"], fw))) if fw else None
+        out.append({"nombre": base, "tipo": rep["tipo"], "moneda": rep["moneda"],
+                    "vcp": vcp, "aum": aum_tot, "es_mm": rep["tipo"].startswith("Money Market"),
+                    "tna": (r1d * 365 if r1d is not None else None),
+                    "ret": {"1D": r1d, "WTD": rwtd, "MTD": ret(rep["vcp_mtd"]),
+                            "YTD": ret(rep["vcp_ytd"]), "1Y": ret(rep["vcp_1y"])}})
+    out.sort(key=lambda z: -(z["aum"] or 0))
+    return out
+
+
 WINDOWS = ["1D", "1W", "1M", "YTD", "1Y"]
 
 
@@ -332,7 +408,8 @@ def flujos(cierre):
            "serie_diaria": serie,
            "aum_por_bucket": aum_dim("bucket"),
            "aum_por_gestora": aum_dim("gestora"),
-           "aum_por_tipo_ger": aum_dim("tipo_ger")}
+           "aum_por_tipo_ger": aum_dim("tipo_ger"),
+           "bm_funds": build_bm_funds(cierre)}
     return res
 
 
@@ -340,10 +417,10 @@ def flujos(cierre):
 def _bajar(pres):
     fg = file_guid(pres)
     if not fg:
-        return None, None
+        return None, None, None
     content = descargar_xlsx(fg[1], fg[2])
     if not content:
-        return None, None
+        return None, None, None
     return parse_planilla(content)
 
 
@@ -353,11 +430,12 @@ def bajar_un_dia(fecha_target):
     if not cand:
         raise SystemExit("No hay doc para %s." % fecha_target)
     print("Documento %s (%s)" % (fecha_target, cand[0]))
-    fecha_iso, filas = _bajar(cand[0])
+    fecha_iso, filas, bm = _bajar(cand[0])
     if filas is None:
         raise SystemExit("No se pudo descargar/parsear el xlsx.")
-    print("  %d fondos (fecha %s)" % (len(filas), fecha_iso))
+    print("  %d fondos (fecha %s) | BM %d" % (len(filas), fecha_iso, len(bm)))
     append_agg(fecha_iso or fecha_target, agregar_dia(filas))
+    append_bm(fecha_iso or fecha_target, bm)
     return fecha_iso or fecha_target
 
 
@@ -381,10 +459,11 @@ def main():
                 break
             vistas.add(fecha_doc)
             try:
-                fecha_iso, filas = _bajar(pres)
+                fecha_iso, filas, bm = _bajar(pres)
                 if filas is None:
                     continue
                 append_agg(fecha_iso or fecha_doc, agregar_dia(filas))
+                append_bm(fecha_iso or fecha_doc, bm)
                 time.sleep(1.0)
             except Exception as e:
                 print("  ! backfill %s: %s" % (fecha_doc, str(e)[:80]), file=sys.stderr)
