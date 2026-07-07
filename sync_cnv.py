@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Sincronizador de FLUJOS de FCI desde CNV (oficial, publico).  v3 (07-jul-2026)
+Sincronizador de FLUJOS de FCI desde CNV (oficial, publico).  v4 (07-jul-2026)
 
-CAMBIO CLAVE v3 (peso): el historico se guarda AGREGADO POR DIA (cnv_agg_history.csv), una fila por
-(fecha, dimension, clave) con in/out/net/aum, en vez de una fila por fondo. Pasa de ~2000 filas/dia
-a ~50 => un ano entero entra en pocos MB (antes ~60MB, GitHub lo rechazaba). El reporte usa justo
-estos agregados (por bucket / gestora / tipo de gerente), no el fondo individual.
+Cambios v4 vs v3:
+  1) MONEDA: los fondos en dolares (moneda USD/USB o clasif "Dolar Estadounidense") se separan
+     en buckets con sufijo " USD" en TODAS las categorias (antes solo MM y Renta Fija). Sus valores
+     ya vienen en USD en la planilla (col5 VCP y col14 Patrimonio en la moneda del fondo), asi que
+     no se mezclan mas con los pesos. El reporte los muestra en una tabla aparte en USD.
+  2) GUARD DE ARTEFACTO: el flujo diario solo se computa si |flujo| <= 0.85 * patrimonio del fondo
+     (max entre hoy y dia previo). Los saltos ~100% (altas/bajas/reclasificacion de clases, cuando
+     falta la cuotaparte del dia previo) se descartan: eran los que contaminaban YTD/1Y.
+  3) REVISIONES: en modo diario (backfill 0) se re-bajan los ultimos 8 dias habiles para captar
+     re-presentaciones de CNV (la mas nueva por fecha = ultima revision).
 
-Se mantiene de v2: flujo diario intra-archivo (cuotapartes HOY vs AYER del mismo xlsx), tipo de
-gerente (Independiente/Bancaria), y el JSON de salida (flujos_latest.json) con la MISMA estructura
-(por_bucket/por_gestora/por_tipo_ger/serie_diaria/aum_por_*), asi macro_flujos.py no cambia su parseo.
-Nota: el in/out por ventana es la suma de los in/out DIARIOS de esa dimension (flujo bruto del
-periodo); el net es identico a sumar netos. En 1D coincide exacto con el criterio por-fondo.
+Se mantiene de v3: historico agregado por dia (cnv_agg_history.csv) y el mismo JSON de salida.
 
 Circuito de descarga (sin token, publico):
   1) GET  www.cnv.gov.ar/.../CuotaPartes  -> (fecha_doc, GUID presentacion del link al AIF)
@@ -55,6 +57,9 @@ OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 AGG = os.path.join(OUT_DIR, "cnv_agg_history.csv")
 AGG_COLS = ["fecha", "dim", "clave", "in", "out", "net", "aum"]
 DIMS = ("bucket", "gestora", "tipo_ger")
+
+# umbral del guard de artefacto (fraccion del patrimonio del fondo)
+MAX_FLUJO_FRAC = 0.85
 
 _MESES = {"ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
           "jul": 7, "ago": 8, "sep": 9, "oct": 10, "nov": 11, "dic": 12}
@@ -146,9 +151,14 @@ def tipo_gerente(g):
     return "Bancaria" if any(k in gl for k in BANCARIAS) else "Independiente"
 
 
+def es_usd(clasif, moneda):
+    c = (clasif or "").upper()
+    return ("DOLAR" in c) or ((moneda or "").upper().strip() in ("USD", "USB", "U$S", "DOL"))
+
+
 def bucket(clasif, plazo, moneda):
     c = (clasif or "").upper()
-    usd = "DOLAR" in c or (moneda or "").upper() in ("USD", "U$S", "DOL")
+    usd = es_usd(clasif, moneda)
     try:
         p = int(plazo)
     except (TypeError, ValueError):
@@ -160,20 +170,28 @@ def bucket(clasif, plazo, moneda):
             return "Renta Fija USD"
         return "Renta Fija ARS T+1" if p == 1 else "Renta Fija ARS"
     if "RENTA MIXTA" in c:
-        return "Renta Mixta"
+        return "Renta Mixta USD" if usd else "Renta Mixta"
     if "RENTA VARIABLE" in c:
-        return "Renta Variable"
+        return "Renta Variable USD" if usd else "Renta Variable"
     if "PYME" in c:
-        return "PyMEs"
+        return "PyMEs USD" if usd else "PyMEs"
     if "INFRAEST" in c:
-        return "Infraestructura"
+        return "Infraestructura USD" if usd else "Infraestructura"
     if "RETORNO TOTAL" in c:
-        return "Retorno Total"
-    return (clasif or "Otros").replace(" Peso Argentina", "").replace(" Dolar Estadounidense", " USD")
+        return "Retorno Total USD" if usd else "Retorno Total"
+    if "ASG" in c:
+        return "ASG USD" if usd else "ASG"
+    if "RG900" in c:
+        return "RG900"
+    if "FONDOS CERRADOS" in c:
+        return "Fondos Cerrados USD" if usd else "Fondos Cerrados"
+    base = (clasif or "Otros").replace(" Peso Argentina", "") \
+        .replace(" Dolar Estadounidense Billete", " USD").replace(" Dolar Estadounidense", " USD")
+    return base
 
 
 def parse_planilla(content):
-    """Devuelve (fecha_iso, [filas por fondo con FLUJO DIARIO intra-archivo])."""
+    """Devuelve (fecha_iso, [filas por fondo con FLUJO DIARIO intra-archivo, con guard de artefacto])."""
     wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     ws = wb["Sheet 1"] if "Sheet 1" in wb.sheetnames else wb[wb.sheetnames[0]]
     rows = list(ws.iter_rows(min_row=9, values_only=True))
@@ -184,6 +202,7 @@ def parse_planilla(content):
     for r in rows:
         c0 = r[0]
         vcp = _num(r[5]); patr = _num(r[14]); cn = _num(r[12]); cp = _num(r[13])
+        patr_prev = _num(r[15]) if len(r) > 15 else None
         if c0 and vcp is None and patr is None:
             clasif = str(c0).strip(); continue
         if not c0 or vcp is None:
@@ -194,7 +213,13 @@ def parse_planilla(content):
                     fecha_iso = dt.datetime.strptime(str(r[4]).strip(), fmt).strftime("%Y-%m-%d"); break
                 except Exception:
                     pass
-        flujo = (cn - cp) * vcp / 1000.0 if (cn is not None and cp is not None) else None
+        # flujo intra-archivo con guard de artefacto (descartar saltos ~totales de patrimonio)
+        flujo = None
+        if cn is not None and cp is not None:
+            f = (cn - cp) * vcp / 1000.0
+            ref = max(abs(patr or 0.0), abs(patr_prev or 0.0))
+            if ref > 0 and abs(f) <= MAX_FLUJO_FRAC * ref:
+                flujo = f
         ger = str(r[23]).strip() if r[23] else "?"
         out.append(dict(fondo=str(c0).strip(), gestora=ger, tipo_ger=tipo_gerente(ger),
                         bucket=bucket(clasif, r[37], r[1]), aum=patr, flujo=flujo))
@@ -203,7 +228,7 @@ def parse_planilla(content):
 
 def agregar_dia(filas):
     """De filas por fondo -> filas agregadas (dim, clave, in, out, net, aum)."""
-    acc = {}  # (dim, clave) -> [in, out, net, aum]
+    acc = {}
     for f in filas:
         fl = f["flujo"]; a = f["aum"] or 0.0
         for dim in DIMS:
@@ -289,11 +314,10 @@ def flujos(cierre):
     # serie diaria de neto de la industria (suma de net del dim 'bucket' por fecha), ult. 40
     dia = {}
     for r in rows:
-        if r["dim"] == "bucket":
+        if r["dim"] == "bucket" and not r["clave"].endswith("USD"):
             dia[r["fecha"]] = dia.get(r["fecha"], 0.0) + r["net"]
     serie = [[f, round(dia[f])] for f in fechas if f in dia][-40:]
 
-    # AUM del dia de cierre por dimension
     def aum_dim(dim):
         m = {}
         for r in rows:
@@ -323,24 +347,18 @@ def _bajar(pres):
     return parse_planilla(content)
 
 
-def bajar_un_dia(fecha_target=None):
+def bajar_un_dia(fecha_target):
     docs = listar_documentos()
-    if not docs:
-        raise SystemExit("Lista vacia.")
-    if fecha_target:
-        cand = [g for (f, g) in docs if f == fecha_target]
-        if not cand:
-            raise SystemExit("No hay doc para %s." % fecha_target)
-        fecha_doc, pres = fecha_target, cand[0]
-    else:
-        fecha_doc, pres = docs[0]
-    print("Documento %s (%s)" % (fecha_doc, pres))
-    fecha_iso, filas = _bajar(pres)
+    cand = [g for (f, g) in docs if f == fecha_target]
+    if not cand:
+        raise SystemExit("No hay doc para %s." % fecha_target)
+    print("Documento %s (%s)" % (fecha_target, cand[0]))
+    fecha_iso, filas = _bajar(cand[0])
     if filas is None:
         raise SystemExit("No se pudo descargar/parsear el xlsx.")
     print("  %d fondos (fecha %s)" % (len(filas), fecha_iso))
-    append_agg(fecha_iso or fecha_doc, agregar_dia(filas))
-    return fecha_iso or fecha_doc
+    append_agg(fecha_iso or fecha_target, agregar_dia(filas))
+    return fecha_iso or fecha_target
 
 
 def main():
@@ -350,11 +368,17 @@ def main():
     args = ap.parse_args()
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    if args.backfill:
+    if args.date:
+        cierre = bajar_un_dia(args.date)
+    else:
+        # backfill 0 => refrescar ultimos 8 dias habiles (captura re-presentaciones/revisiones)
+        n = args.backfill if args.backfill else 8
         docs = listar_documentos(); vistas = set()
-        for (fecha_doc, pres) in docs[:args.backfill]:
+        for (fecha_doc, pres) in docs:
             if fecha_doc in vistas:
                 continue
+            if len(vistas) >= n:
+                break
             vistas.add(fecha_doc)
             try:
                 fecha_iso, filas = _bajar(pres)
@@ -364,16 +388,16 @@ def main():
                 time.sleep(1.0)
             except Exception as e:
                 print("  ! backfill %s: %s" % (fecha_doc, str(e)[:80]), file=sys.stderr)
-        cierre = sorted(vistas)[-1]
-    else:
-        cierre = bajar_un_dia(args.date)
+        cierre = sorted(vistas)[-1] if vistas else None
 
+    if not cierre:
+        raise SystemExit("Sin cierre.")
     res = flujos(cierre)
     with open(os.path.join(OUT_DIR, "flujos_latest.json"), "w", encoding="utf-8") as fh:
         json.dump({"generado": dt.datetime.utcnow().isoformat() + "Z", "flujos": res}, fh, ensure_ascii=False)
     if res:
-        neto = sum(v["net"] for v in res["por_bucket"]["1D"].values())
-        print("OK -> flujos_latest.json (cierre %s | neto 1D %+.0f mill)" % (res["cierre"], neto / 1e6))
+        neto = sum(v["net"] for b, v in res["por_bucket"]["1D"].items() if not b.endswith("USD"))
+        print("OK -> flujos_latest.json (cierre %s | neto 1D ARS %+.0f mill)" % (res["cierre"], neto / 1e6))
 
 
 if __name__ == "__main__":
