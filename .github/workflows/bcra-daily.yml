@@ -17,6 +17,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Instalar dependencias
+        run: pip install openpyxl
+
       - name: Bajar y reducir BCRA
         run: python sync_bcra.py --check
 
