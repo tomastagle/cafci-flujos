@@ -5,19 +5,21 @@ JSON que consume el Monitor "Bull's Eye". Corre en GitHub Actions (tiene salida 
 el sandbox de Cowork NO llega al BCRA). Deja los archivos en macro/*.json para que el reporte
 los baje como bcra_series/monetario/monetario_ext/reservas/reservas_ext/usd_cer/bm_componentes.
 
-No incluye (por ahora, salen de .xlsx del BCRA): stock_otros (series.xlsm) e itcrm_topup (ITCRMSerie.xlsx).
-Tampoco fx_al30 (viene de 1816) ni tcr_hist (base congelada).
+Ademas baja los .xlsx publicos del BCRA y los parsea con openpyxl: stock_otros (series.xlsm,
+hoja INSTRUMENTOS DEL BCRA col D) e itcrm_topup (ITCRMSerie.xlsx, hoja ITCRM y bilaterales).
+NO incluye fx_al30 (viene de 1816) ni tcr_hist (base congelada).
 
 Uso:  python sync_bcra.py            # produce macro/*.json
       python sync_bcra.py --check    # imprime cierres para validar
 Metodologia identica a la aplicada a mano (ver RUNBOOK_DATOS.md del proyecto API 1816).
 """
 from __future__ import annotations
-import os, json, time, calendar, argparse
+import os, io, json, time, calendar, argparse
 from datetime import date, datetime, timedelta
 import urllib.request
 
 BASE = "https://api.bcra.gob.ar/estadisticas/v4.0/monetarias/"
+XLSX_BASE = "https://www.bcra.gob.ar/Pdfs/PublicacionesEstadisticas/"
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "macro")
 os.makedirs(OUT, exist_ok=True)
 HDR = {"User-Agent": "Mozilla/5.0 (bcra-sync)"}
@@ -274,17 +276,87 @@ def build_bm_componentes():
                                        "ult_dato": share[-1][0]},
                               "share_circ_mensual": share})
 
+# ---------------------------------------------------------------- xlsx del BCRA (openpyxl)
+NOTA13 = ("Comprende el saldo del pasivo (con signo positivo) del BCRA neto del activo "
+          "(con signo negativo) para el BCRA, resultante de operaciones de corto plazo, "
+          "concertadas a partir del 15 de julio de 2025, tomando como referencia las tasas "
+          "de interes de mercado vigentes. Incluye Operaciones Simultaneas negociadas en BYMA.")
+
+def _download(fname):
+    url = XLSX_BASE + fname
+    for intento in range(4):
+        try:
+            req = urllib.request.Request(url, headers=HDR)
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return r.read()
+        except Exception:
+            if intento == 3:
+                raise
+            time.sleep(3 * (intento + 1))
+
+def _as_date(v):
+    """Normaliza una celda de fecha a 'YYYY-MM-DD' (datetime o serial Excel)."""
+    if isinstance(v, datetime):
+        return v.date().isoformat()
+    if isinstance(v, date):
+        return v.isoformat()
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and 30000 < v < 80000:
+        return (date(1899, 12, 30) + timedelta(days=int(round(v)))).isoformat()
+    return None
+
+def build_stock_otros():
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(_download("series.xlsm")), data_only=True, keep_vba=False)
+    ws = wb["INSTRUMENTOS DEL BCRA"]
+    serie = []
+    for row in ws.iter_rows(values_only=True):
+        if not row or len(row) < 4:
+            continue
+        f = _as_date(row[0]); v = row[3]
+        if f and f >= "2025-12-30" and isinstance(v, (int, float)) and not isinstance(v, bool):
+            serie.append([f, round(v)])
+    wb.close()
+    serie.sort()
+    w("stock_otros.json", {"meta": {"fuente": "series.xlsm BCRA, hoja 'INSTRUMENTOS DEL BCRA', col D 'Otros (13)' (saldos, millones ARS).",
+                                    "nota13": NOTA13, "actualizado": date.today().isoformat(),
+                                    "ult_dato": serie[-1][0] if serie else None},
+                          "serie": serie})
+    return serie[-1] if serie else None
+
+def build_itcrm():
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(_download("ITCRMSerie.xlsx")), data_only=True)
+    ws = wb["ITCRM y bilaterales"]
+    rows = []
+    for row in ws.iter_rows(values_only=True):
+        if not row or len(row) < 2:
+            continue
+        f = _as_date(row[0]); v = row[1]
+        if f and isinstance(v, (int, float)) and not isinstance(v, bool):
+            rows.append([f, round(v, 6)])
+    wb.close()
+    rows.sort()
+    w("itcrm_topup.json", {"meta": {"fuente": "ITCRMSerie.xlsx (BCRA), hoja 'ITCRM y bilaterales'",
+                                    "actualizado": date.today().isoformat(),
+                                    "nota": "incluye dias no habiles; el merge filtra por fechas con TCN; ultimas 60 filas para captar revisiones"},
+                          "itcrm": rows[-60:]})
+    return rows[-1] if rows else None
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--check", action="store_true"); a = ap.parse_args()
     print("Bajando y reduciendo BCRA API v4 ->", OUT)
     print("bcra_series cierre", build_bcra_series())
     build_monetario(); build_monetario_ext(); build_reservas(); build_usd_cer(); build_bm_componentes()
+    print("stock_otros ult", build_stock_otros())
+    print("itcrm ult", build_itcrm())
     print("Listo.")
     if a.check:
-        for n in ("bcra_series", "monetario", "monetario_ext", "reservas", "reservas_ext", "usd_cer", "bm_componentes"):
+        for n in ("bcra_series", "monetario", "monetario_ext", "reservas", "reservas_ext", "usd_cer",
+                  "bm_componentes", "stock_otros", "itcrm_topup"):
             d = json.load(open(os.path.join(OUT, n + ".json"))); m = d.get("meta", {})
             dep = m.get("dep") or {}
-            c = m.get("cierre_datos") or dep.get("cierre") or (m.get("stock_ult") or [""])[0] or ""
+            c = (m.get("cierre_datos") or dep.get("cierre") or m.get("ult_dato")
+                 or (m.get("stock_ult") or [""])[0] or m.get("actualizado") or "")
             print("  %s cierre=%s" % (n, c))
 
 if __name__ == "__main__":
