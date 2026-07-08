@@ -25,19 +25,20 @@ HDR = {"User-Agent": "Mozilla/5.0 (bcra-sync)"}
 # ---------------------------------------------------------------- fetch
 _CACHE: dict = {}
 def serie(idv, desde="2025-06-01", hasta=None):
-    """Devuelve {fecha_str: valor} para un id de la API v4 (cachea por id)."""
-    if idv in _CACHE:
-        return _CACHE[idv]
+    """Devuelve {fecha_str: valor} para un id de la API v4 (cachea por (id, desde))."""
+    key = (idv, desde)
+    if key in _CACHE:
+        return _CACHE[key]
     hasta = hasta or date.today().isoformat()
-    url = f"{BASE}{idv}?desde={desde}&hasta={hasta}&limit=3000"
+    url = f"{BASE}{idv}?desde={desde}&hasta={hasta}&limit=9000"
     for intento in range(4):
         try:
             req = urllib.request.Request(url, headers=HDR)
-            with urllib.request.urlopen(req, timeout=45) as r:
+            with urllib.request.urlopen(req, timeout=60) as r:
                 j = json.loads(r.read().decode("utf-8"))
             det = (j.get("results") or [{}])[0].get("detalle", [])
             out = {d["fecha"]: d["valor"] for d in det}
-            _CACHE[idv] = out
+            _CACHE[key] = out
             return out
         except Exception:
             if intento == 3:
@@ -218,8 +219,8 @@ def _anual_prestamos():
     for y in years:
         it = sorted(by117[y])
         reales = [v * cer_base / (ref(scer, f) or cer_base) for f, v in it]
-        prom_real = sum(reales) / len(reales) / 1e12
-        fin_real = reales[-1] / 1e12
+        prom_real = sum(reales) / len(reales) / 1e6      # millones ARS -> billones (Bn)
+        fin_real = reales[-1] / 1e6
         vals100 = [v for _, v in sorted(by100[y])]
         ratio = (sum(v for _, v in it) / len(it)) / (sum(vals100) / len(vals100))
         filas.append([y, round(prom_real, 2), round(fin_real, 2), round(ratio, 4)])
@@ -268,7 +269,9 @@ def main():
     if a.check:
         for n in ("bcra_series", "monetario", "monetario_ext", "reservas", "reservas_ext", "usd_cer", "bm_componentes"):
             d = json.load(open(os.path.join(OUT, n + ".json"))); m = d.get("meta", {})
-            print(f"  {n}: cierre={m.get('cierre_datos') or (m.get('dep') or {}).get('cierre') or (m.get('stock_ult') or [''])[0]}")
+            dep = m.get("dep") or {}
+            c = m.get("cierre_datos") or dep.get("cierre") or (m.get("stock_ult") or [""])[0] or ""
+            print("  %s cierre=%s" % (n, c))
 
 if __name__ == "__main__":
     main()
