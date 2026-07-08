@@ -30,7 +30,7 @@ def serie(idv, desde="2025-06-01", hasta=None):
     if key in _CACHE:
         return _CACHE[key]
     hasta = hasta or date.today().isoformat()
-    url = f"{BASE}{idv}?desde={desde}&hasta={hasta}&limit=9000"
+    url = f"{BASE}{idv}?desde={desde}&hasta={hasta}&limit=3000"
     for intento in range(4):
         try:
             req = urllib.request.Request(url, headers=HDR)
@@ -198,7 +198,8 @@ def _prom_fin(s):
         out[y] = (sum(vals) / len(vals), it[-1][1])
     return out
 
-def _anual_usd(s125, s108):
+def _anual_usd():
+    s125 = serie(125, desde="2015-01-01"); s108 = serie(108, desde="2015-01-01")
     cred = _prom_fin(s125); dep = _prom_fin(s108)
     years = sorted(set(cred) & set(dep))
     return {"nota": "promedio anual diario y fin de anio, ids 125 (creditos) y 108 (depositos priv)",
@@ -246,10 +247,10 @@ def build_usd_cer():
     w("usd_cer.json", {"meta": {"fuente": "API BCRA v4. USD ids 107/108/125/118-124; CER id 30.",
                                 "dep_refs": fechas_ref(108, depC), "cer_refs": [ref_date(s30, t) for t in Tc]},
                        "usd": usd, "cred_serie": cred_serie, "dep_serie": dep_serie, "cer": cer,
-                       "anual_usd": _anual_usd(s125, s108), "anual_prestamos": _anual_prestamos()})
+                       "anual_usd": _anual_usd(), "anual_prestamos": _anual_prestamos()})
 
 def build_bm_componentes():
-    s15, s16 = serie(15, desde="2003-01-01"), serie(16, desde="2003-01-01")
+    s15, s16 = serie(15, desde="2015-01-01"), serie(16, desde="2015-01-01")
     from collections import defaultdict
     ratios = defaultdict(list)
     for f in sorted(set(s15) & set(s16)):
