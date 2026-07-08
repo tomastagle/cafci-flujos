@@ -1,0 +1,29 @@
+name: BCRA macro diario
+
+on:
+  schedule:
+    - cron: "0 12 * * 1-6"     # ~09:00 ART (lun-sab), tras publicar el BCRA
+  workflow_dispatch:            # correr a mano desde la pestaña Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Bajar y reducir BCRA
+        run: python sync_bcra.py --check
+
+      - name: Commit de los JSON macro
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add macro/*.json
+          git commit -m "BCRA macro $(date -u +%F-%H%M)" || echo "sin cambios"
+          git push
