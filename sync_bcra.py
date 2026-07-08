@@ -25,25 +25,38 @@ HDR = {"User-Agent": "Mozilla/5.0 (bcra-sync)"}
 # ---------------------------------------------------------------- fetch
 _CACHE: dict = {}
 def serie(idv, desde="2025-06-01", hasta=None):
-    """Devuelve {fecha_str: valor} para un id de la API v4 (cachea por (id, desde))."""
+    """Devuelve {fecha_str: valor} para un id de la API v4 (cachea por (id, desde)).
+    Pagina con offset de a 3000 (la API topea en 3000 por pagina; CER id 30 es diario
+    por dia calendario y supera 3000 filas desde 2015 -> requiere varias paginas)."""
     key = (idv, desde)
     if key in _CACHE:
         return _CACHE[key]
     hasta = hasta or date.today().isoformat()
-    url = f"{BASE}{idv}?desde={desde}&hasta={hasta}&limit=3000"
-    for intento in range(4):
-        try:
-            req = urllib.request.Request(url, headers=HDR)
-            with urllib.request.urlopen(req, timeout=60) as r:
-                j = json.loads(r.read().decode("utf-8"))
-            det = (j.get("results") or [{}])[0].get("detalle", [])
-            out = {d["fecha"]: d["valor"] for d in det}
-            _CACHE[key] = out
-            return out
-        except Exception:
-            if intento == 3:
-                raise
-            time.sleep(2 * (intento + 1))
+    PAGE = 3000
+    out: dict = {}
+    offset = 0
+    while True:
+        url = f"{BASE}{idv}?desde={desde}&hasta={hasta}&limit={PAGE}&offset={offset}"
+        got = 0
+        for intento in range(4):
+            try:
+                req = urllib.request.Request(url, headers=HDR)
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    j = json.loads(r.read().decode("utf-8"))
+                det = (j.get("results") or [{}])[0].get("detalle", [])
+                for d in det:
+                    out[d["fecha"]] = d["valor"]
+                got = len(det)
+                break
+            except Exception:
+                if intento == 3:
+                    raise
+                time.sleep(2 * (intento + 1))
+        if got < PAGE:
+            break
+        offset += PAGE
+    _CACHE[key] = out
+    return out
 
 def last_common(ids):
     sets = [set(serie(i).keys()) for i in ids]
