@@ -6719,6 +6719,66 @@ fecha,key,nombre,tipo,moneda,vcp,vcp_prev,aum
 2026-10-05,BM Smart Money Market - Clase B,BM Smart Money Market - Clase B,Money Market ARS (T+0),ARS,10845.027,10827.094,78042811894.79
 2026-10-05,Bull Market Liquidez Dólar - Clase A,Bull Market Liquidez Dólar - Clase A,Money Market USD,USD,1001.695,1001.586,722957.11
 2026-10-05,Bull Market Liquidez Dólar - Clase B,Bull Market Liquidez Dólar - Clase B,Money Market USD,USD,1001.695,1001.586,9436127.5
+2026-10-06,Bull Market Acciones Argentinas - Clase A,Bull Market Acciones Argentinas - Clase A,Renta Variable,ARS,90888.844,90199.073,10866736284.9
+2026-10-06,Bull Market Acciones Argentinas - Clase B,Bull Market Acciones Argentinas - Clase B,Renta Variable,ARS,91827.922,91131.025,2547155827.65
+2026-10-06,BM Smart Corto Plazo - Clase A,BM Smart Corto Plazo - Clase A,Renta Fija ARS T+1,ARS,2100.479,2098.684,963497353.42
+2026-10-06,BM Smart Corto Plazo - Clase B,BM Smart Corto Plazo - Clase B,Renta Fija ARS T+1,ARS,2134.561,2132.696,9800235232.25
+2026-10-06,BM Smart Corto Plazo - Clase C Ley N° 27.743,BM Smart Corto Plazo - Clase C Ley N° 27.743,Renta Fija ARS T+1,ARS,1461.974,1461.974,0.0
+2026-10-06,Bull Market Renta Fija - Clase A,Bull Market Renta Fija - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-06,Bull Market Renta Fija - Clase B,Bull Market Renta Fija - Clase B,Renta Fija ARS T+1,ARS,28117.924,28097.43,66334143292.54
+2026-10-06,BM Active Renta Fija Argentina - Clase A,BM Active Renta Fija Argentina - Clase A,Renta Fija ARS T+1,ARS,21445.03,21395.771,4838531281.68
+2026-10-06,BM Active Renta Fija Argentina - Clase B,BM Active Renta Fija Argentina - Clase B,Renta Fija ARS T+1,ARS,21821.073,21770.801,8045907986.03
+2026-10-06,BM Active Renta Fija Argentina - Clase C Ley N° 27.743,BM Active Renta Fija Argentina - Clase C Ley N° 27.743,Renta Fija ARS T+1,ARS,1093.061,1093.061,0.0
+2026-10-06,Bull Market Ahorro Balanceado II - Clase A,Bull Market Ahorro Balanceado II - Clase A,Renta Fija ARS T+1,ARS,1043.684,1043.684,0.0
+2026-10-06,Bull Market Ahorro Balanceado II - Clase B,Bull Market Ahorro Balanceado II - Clase B,Renta Fija ARS T+1,ARS,1042.564,1040.686,31656392282.9
+2026-10-06,Bull Market Ahorro Balanceado III - Clase A,Bull Market Ahorro Balanceado III - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-06,Bull Market Ahorro Balanceado III - Clase B,Bull Market Ahorro Balanceado III - Clase B,Renta Fija ARS T+1,ARS,994.611,992.957,4973254098.58
+2026-10-06,Bull Market Ahorro Pesos - Clase A,Bull Market Ahorro Pesos - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-06,Bull Market Ahorro Pesos - Clase B,Bull Market Ahorro Pesos - Clase B,Renta Fija ARS T+1,ARS,1412.09,1411.613,216960865594.61
+2026-10-06,Bull Market Estrategia - Clase A,Bull Market Estrategia - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-06,Bull Market Estrategia - Clase B,Bull Market Estrategia - Clase B,Renta Fija ARS T+1,ARS,1207.214,1205.914,190988574049.09
+2026-10-06,Bull Market Renta Fija Plus - Clase A,Bull Market Renta Fija Plus - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-06,Bull Market Renta Fija Plus - Clase B,Bull Market Renta Fija Plus - Clase B,Renta Fija ARS T+1,ARS,1194.79,1194.329,123822080985.25
+2026-10-06,Bull Market Ahorro Dólares - Clase A,Bull Market Ahorro Dólares - Clase A,Renta Fija USD,USD,1072.56,1072.09,11819914.55
+2026-10-06,Bull Market Ahorro Dólares - Clase B,Bull Market Ahorro Dólares - Clase B,Renta Fija USD,USD,1072.559,1072.089,2410559.68
+2026-10-06,Bull Market Renta Fija Dólar - Clase A,Bull Market Renta Fija Dólar - Clase A,Renta Fija USD,USD,1000.0,,0.0
+2026-10-06,Bull Market Renta Fija Dólar - Clase B,Bull Market Renta Fija Dólar - Clase B,Renta Fija USD,USD,1017.64,1015.176,52667647.41
+2026-10-06,Bull Market Abierto Pymes - Clase A,Bull Market Abierto Pymes - Clase A,PyMEs,ARS,1117.831,1117.024,2236732.79
+2026-10-06,Bull Market Abierto Pymes - Clase B,Bull Market Abierto Pymes - Clase B,PyMEs,ARS,1164.494,1163.653,14749589704.64
+2026-10-06,BM Smart Money Market - Clase A,BM Smart Money Market - Clase A,Money Market ARS (T+0),ARS,10314.116,10308.446,2850813532.81
+2026-10-06,BM Smart Money Market - Clase B,BM Smart Money Market - Clase B,Money Market ARS (T+0),ARS,10851.14,10845.027,78341034763.8
+2026-10-06,Bull Market Liquidez Dólar - Clase A,Bull Market Liquidez Dólar - Clase A,Money Market USD,USD,1001.728,1001.695,724409.77
+2026-10-06,Bull Market Liquidez Dólar - Clase B,Bull Market Liquidez Dólar - Clase B,Money Market USD,USD,1001.728,1001.695,9346779.39
+2026-10-19,Bull Market Acciones Argentinas - Clase A,Bull Market Acciones Argentinas - Clase A,Renta Variable,ARS,88128.707,89589.549,11170272520.06
+2026-10-19,Bull Market Acciones Argentinas - Clase B,Bull Market Acciones Argentinas - Clase B,Renta Variable,ARS,89039.267,90515.203,2578722146.71
+2026-10-19,BM Smart Corto Plazo - Clase A,BM Smart Corto Plazo - Clase A,Renta Fija ARS T+1,ARS,2116.567,2115.554,1013147888.48
+2026-10-19,BM Smart Corto Plazo - Clase B,BM Smart Corto Plazo - Clase B,Renta Fija ARS T+1,ARS,2151.448,2150.295,11569417664.84
+2026-10-19,BM Smart Corto Plazo - Clase C Ley N° 27.743,BM Smart Corto Plazo - Clase C Ley N° 27.743,Renta Fija ARS T+1,ARS,1461.974,1461.974,0.0
+2026-10-19,Bull Market Renta Fija - Clase A,Bull Market Renta Fija - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-19,Bull Market Renta Fija - Clase B,Bull Market Renta Fija - Clase B,Renta Fija ARS T+1,ARS,28159.319,28212.527,66431799785.49
+2026-10-19,BM Active Renta Fija Argentina - Clase A,BM Active Renta Fija Argentina - Clase A,Renta Fija ARS T+1,ARS,21630.906,21621.523,5156215267.7
+2026-10-19,BM Active Renta Fija Argentina - Clase B,BM Active Renta Fija Argentina - Clase B,Renta Fija ARS T+1,ARS,22012.171,22002.17,8249610069.09
+2026-10-19,BM Active Renta Fija Argentina - Clase C Ley N° 27.743,BM Active Renta Fija Argentina - Clase C Ley N° 27.743,Renta Fija ARS T+1,ARS,1093.061,1093.061,0.0
+2026-10-19,Bull Market Ahorro Balanceado II - Clase A,Bull Market Ahorro Balanceado II - Clase A,Renta Fija ARS T+1,ARS,1043.684,1043.684,0.0
+2026-10-19,Bull Market Ahorro Balanceado II - Clase B,Bull Market Ahorro Balanceado II - Clase B,Renta Fija ARS T+1,ARS,1053.869,1052.754,33006388068.27
+2026-10-19,Bull Market Ahorro Balanceado III - Clase A,Bull Market Ahorro Balanceado III - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-19,Bull Market Ahorro Balanceado III - Clase B,Bull Market Ahorro Balanceado III - Clase B,Renta Fija ARS T+1,ARS,1002.151,1002.813,5010954200.19
+2026-10-19,Bull Market Ahorro Pesos - Clase A,Bull Market Ahorro Pesos - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-19,Bull Market Ahorro Pesos - Clase B,Bull Market Ahorro Pesos - Clase B,Renta Fija ARS T+1,ARS,1423.304,1421.675,218683740847.7
+2026-10-19,Bull Market Estrategia - Clase A,Bull Market Estrategia - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-19,Bull Market Estrategia - Clase B,Bull Market Estrategia - Clase B,Renta Fija ARS T+1,ARS,1217.123,1216.424,192556344148.95
+2026-10-19,Bull Market Renta Fija Plus - Clase A,Bull Market Renta Fija Plus - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
+2026-10-19,Bull Market Renta Fija Plus - Clase B,Bull Market Renta Fija Plus - Clase B,Renta Fija ARS T+1,ARS,1203.867,1202.106,124762792410.55
+2026-10-19,Bull Market Ahorro Dólares - Clase A,Bull Market Ahorro Dólares - Clase A,Renta Fija USD,USD,1075.068,1076.355,11782425.86
+2026-10-19,Bull Market Ahorro Dólares - Clase B,Bull Market Ahorro Dólares - Clase B,Renta Fija USD,USD,1075.067,1076.354,2537959.94
+2026-10-19,Bull Market Renta Fija Dólar - Clase A,Bull Market Renta Fija Dólar - Clase A,Renta Fija USD,USD,1000.0,,0.0
+2026-10-19,Bull Market Renta Fija Dólar - Clase B,Bull Market Renta Fija Dólar - Clase B,Renta Fija USD,USD,1018.097,1019.288,52691305.06
+2026-10-19,Bull Market Abierto Pymes - Clase A,Bull Market Abierto Pymes - Clase A,PyMEs,ARS,1126.464,1124.845,5341762.3
+2026-10-19,Bull Market Abierto Pymes - Clase B,Bull Market Abierto Pymes - Clase B,PyMEs,ARS,1173.487,1171.801,14863494429.66
+2026-10-19,BM Smart Money Market - Clase A,BM Smart Money Market - Clase A,Money Market ARS (T+0),ARS,10382.287,10367.161,2869150054.32
+2026-10-19,BM Smart Money Market - Clase B,BM Smart Money Market - Clase B,Money Market ARS (T+0),ARS,10924.806,10908.441,82918494129.43
+2026-10-19,Bull Market Liquidez Dólar - Clase A,Bull Market Liquidez Dólar - Clase A,Money Market USD,USD,1002.074,1001.995,3178566.89
+2026-10-19,Bull Market Liquidez Dólar - Clase B,Bull Market Liquidez Dólar - Clase B,Money Market USD,USD,1002.074,1001.995,12737611.9
 2026-10-16,Bull Market Acciones Argentinas - Clase A,Bull Market Acciones Argentinas - Clase A,Renta Variable,ARS,89589.549,89629.53,11372821764.98
 2026-10-16,Bull Market Acciones Argentinas - Clase B,Bull Market Acciones Argentinas - Clase B,Renta Variable,ARS,90515.203,90555.597,2621467667.77
 2026-10-16,BM Smart Corto Plazo - Clase A,BM Smart Corto Plazo - Clase A,Renta Fija ARS T+1,ARS,2115.554,2110.874,1008934829.19
@@ -6746,7 +6806,7 @@ fecha,key,nombre,tipo,moneda,vcp,vcp_prev,aum
 2026-10-16,Bull Market Abierto Pymes - Clase A,Bull Market Abierto Pymes - Clase A,PyMEs,ARS,1124.845,1123.218,5334086.89
 2026-10-16,Bull Market Abierto Pymes - Clase B,Bull Market Abierto Pymes - Clase B,PyMEs,ARS,1171.801,1170.106,14842137369.08
 2026-10-16,BM Smart Money Market - Clase A,BM Smart Money Market - Clase A,Money Market ARS (T+0),ARS,10367.161,10361.489,2884741403.36
-2026-10-16,BM Smart Money Market - Clase B,BM Smart Money Market - Clase B,Money Market ARS (T+0),ARS,10908.441,10902.324,122104121211.71
+2026-10-16,BM Smart Money Market - Clase B,BM Smart Money Market - Clase B,Money Market ARS (T+0),ARS,10908.441,10902.324,122106496927.06
 2026-10-16,Bull Market Liquidez Dólar - Clase A,Bull Market Liquidez Dólar - Clase A,Money Market USD,USD,1001.995,1001.97,3175374.28
 2026-10-16,Bull Market Liquidez Dólar - Clase B,Bull Market Liquidez Dólar - Clase B,Money Market USD,USD,1001.995,1001.97,10366790.38
 2026-10-15,Bull Market Acciones Argentinas - Clase A,Bull Market Acciones Argentinas - Clase A,Renta Variable,ARS,89629.53,88989.558,11375666462.38
@@ -6929,33 +6989,3 @@ fecha,key,nombre,tipo,moneda,vcp,vcp_prev,aum
 2026-10-08,BM Smart Money Market - Clase B,BM Smart Money Market - Clase B,Money Market ARS (T+0),ARS,10863.199,10857.147,90758375299.92
 2026-10-08,Bull Market Liquidez Dólar - Clase A,Bull Market Liquidez Dólar - Clase A,Money Market USD,USD,1001.781,1001.755,3029224.43
 2026-10-08,Bull Market Liquidez Dólar - Clase B,Bull Market Liquidez Dólar - Clase B,Money Market USD,USD,1001.781,1001.755,10778695.41
-2026-10-06,Bull Market Acciones Argentinas - Clase A,Bull Market Acciones Argentinas - Clase A,Renta Variable,ARS,90888.844,90199.073,10866736284.9
-2026-10-06,Bull Market Acciones Argentinas - Clase B,Bull Market Acciones Argentinas - Clase B,Renta Variable,ARS,91827.922,91131.025,2547155827.65
-2026-10-06,BM Smart Corto Plazo - Clase A,BM Smart Corto Plazo - Clase A,Renta Fija ARS T+1,ARS,2100.479,2098.684,963497353.42
-2026-10-06,BM Smart Corto Plazo - Clase B,BM Smart Corto Plazo - Clase B,Renta Fija ARS T+1,ARS,2134.561,2132.696,9800235232.25
-2026-10-06,BM Smart Corto Plazo - Clase C Ley N° 27.743,BM Smart Corto Plazo - Clase C Ley N° 27.743,Renta Fija ARS T+1,ARS,1461.974,1461.974,0.0
-2026-10-06,Bull Market Renta Fija - Clase A,Bull Market Renta Fija - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
-2026-10-06,Bull Market Renta Fija - Clase B,Bull Market Renta Fija - Clase B,Renta Fija ARS T+1,ARS,28117.924,28097.43,66334143292.54
-2026-10-06,BM Active Renta Fija Argentina - Clase A,BM Active Renta Fija Argentina - Clase A,Renta Fija ARS T+1,ARS,21445.03,21395.771,4838531281.68
-2026-10-06,BM Active Renta Fija Argentina - Clase B,BM Active Renta Fija Argentina - Clase B,Renta Fija ARS T+1,ARS,21821.073,21770.801,8045907986.03
-2026-10-06,BM Active Renta Fija Argentina - Clase C Ley N° 27.743,BM Active Renta Fija Argentina - Clase C Ley N° 27.743,Renta Fija ARS T+1,ARS,1093.061,1093.061,0.0
-2026-10-06,Bull Market Ahorro Balanceado II - Clase A,Bull Market Ahorro Balanceado II - Clase A,Renta Fija ARS T+1,ARS,1043.684,1043.684,0.0
-2026-10-06,Bull Market Ahorro Balanceado II - Clase B,Bull Market Ahorro Balanceado II - Clase B,Renta Fija ARS T+1,ARS,1042.564,1040.686,31656392282.9
-2026-10-06,Bull Market Ahorro Balanceado III - Clase A,Bull Market Ahorro Balanceado III - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
-2026-10-06,Bull Market Ahorro Balanceado III - Clase B,Bull Market Ahorro Balanceado III - Clase B,Renta Fija ARS T+1,ARS,994.611,992.957,4973254098.58
-2026-10-06,Bull Market Ahorro Pesos - Clase A,Bull Market Ahorro Pesos - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
-2026-10-06,Bull Market Ahorro Pesos - Clase B,Bull Market Ahorro Pesos - Clase B,Renta Fija ARS T+1,ARS,1412.09,1411.613,216960865594.61
-2026-10-06,Bull Market Estrategia - Clase A,Bull Market Estrategia - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
-2026-10-06,Bull Market Estrategia - Clase B,Bull Market Estrategia - Clase B,Renta Fija ARS T+1,ARS,1207.214,1205.914,190988574049.09
-2026-10-06,Bull Market Renta Fija Plus - Clase A,Bull Market Renta Fija Plus - Clase A,Renta Fija ARS T+1,ARS,1000.0,1000.0,0.0
-2026-10-06,Bull Market Renta Fija Plus - Clase B,Bull Market Renta Fija Plus - Clase B,Renta Fija ARS T+1,ARS,1194.79,1194.329,123822080985.25
-2026-10-06,Bull Market Ahorro Dólares - Clase A,Bull Market Ahorro Dólares - Clase A,Renta Fija USD,USD,1072.56,1072.09,11819914.55
-2026-10-06,Bull Market Ahorro Dólares - Clase B,Bull Market Ahorro Dólares - Clase B,Renta Fija USD,USD,1072.559,1072.089,2410559.68
-2026-10-06,Bull Market Renta Fija Dólar - Clase A,Bull Market Renta Fija Dólar - Clase A,Renta Fija USD,USD,1000.0,,0.0
-2026-10-06,Bull Market Renta Fija Dólar - Clase B,Bull Market Renta Fija Dólar - Clase B,Renta Fija USD,USD,1017.64,1015.176,52667647.41
-2026-10-06,Bull Market Abierto Pymes - Clase A,Bull Market Abierto Pymes - Clase A,PyMEs,ARS,1117.831,1117.024,2236732.79
-2026-10-06,Bull Market Abierto Pymes - Clase B,Bull Market Abierto Pymes - Clase B,PyMEs,ARS,1164.494,1163.653,14749589704.64
-2026-10-06,BM Smart Money Market - Clase A,BM Smart Money Market - Clase A,Money Market ARS (T+0),ARS,10314.116,10308.446,2850813532.81
-2026-10-06,BM Smart Money Market - Clase B,BM Smart Money Market - Clase B,Money Market ARS (T+0),ARS,10851.14,10845.027,78341034763.8
-2026-10-06,Bull Market Liquidez Dólar - Clase A,Bull Market Liquidez Dólar - Clase A,Money Market USD,USD,1001.728,1001.695,724409.77
-2026-10-06,Bull Market Liquidez Dólar - Clase B,Bull Market Liquidez Dólar - Clase B,Money Market USD,USD,1001.728,1001.695,9346779.39
