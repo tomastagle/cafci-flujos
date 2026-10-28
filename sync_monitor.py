@@ -48,6 +48,28 @@ IDS = {
     "88": "Depósitos a plazo ajustables por CER/UVAS de los sectores público y privado no financieros",
     "89": "Otros depósitos de los sectores público y privado no financieros",
     "47": "Efecto monetario de las compras netas de divisas al sector privado y otros",
+    # 28-oct-2026: series que la pagina usa y no estaban (agregados, tasas, factores de BM y de reservas, bandas)
+    "96": "Depósitos a plazo fijo no ajustables por CER/UVAS del sector privado no financiero",
+    "117": "Préstamos en pesos al sector privado no financiero",
+    "12": "Tasa de interés por depósitos a 30 días de plazo en entidades financieras",
+    "13": "Tasa de interés por adelantos en cuenta corriente",
+    "46": "Factores de explicación de la base monetaria: total",
+    "48": "Compras de divisas al Tesoro Nacional",
+    "49": "Adelantos transitorios al Tesoro",
+    "50": "Transferencia de utilidades al Tesoro",
+    "51": "Resto de operaciones con el Tesoro",
+    "52": "Pases",
+    "53": "LELIQ y NOTALIQ",
+    "55": "Intereses y remuneración de cuentas",
+    "58": "LEFI",
+    "59": "Otras operaciones",
+    "74": "Reservas internacionales (sin rezago)",
+    "79": "Variación de reservas por organismos internacionales",
+    "80": "Variación de reservas por otras operaciones del sector público",
+    "81": "Variación de reservas por efectivo mínimo",
+    "82": "Variación de reservas por otros",
+    "1187": "Piso de la banda cambiaria",
+    "1188": "Techo de la banda cambiaria",
 }
 MENSUALES = {"27", "28"}
 IPC_URL = ("https://apis.datos.gob.ar/series/api/series/?ids=148.3_INIVELNAL_DICI_M_26"
@@ -75,7 +97,10 @@ def main():
     series = {}
     for idv, nombre in IDS.items():
         desde = DESDE_MENSUAL if idv in MENSUALES else DESDE
-        d = serie(int(idv), desde=desde)
+        try:
+            d = serie(int(idv), desde=desde)
+        except Exception as e:
+            print("serie %s: fallo (%r); se omite" % (idv, e)); continue
         pts = [[f, (float(v) if v is not None else None)] for f, v in sorted(d.items()) if v is not None]
         series[idv] = {"n": nombre, "d": pts}
         time.sleep(0.3)

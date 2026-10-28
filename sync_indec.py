@@ -34,6 +34,13 @@ DISTS = {
     "143.3": ("2023-01-01", "EMAE (INDEC)"),
 }
 CHUNK = 25
+# 28-oct-2026: distribuciones que se buscan por título en el catálogo (no se conoce el identificador de antemano)
+BUSCAR_TITULO = {
+    "ipi": (["producción industrial manufacturero", "ipi manufacturero"], "2023-01-01", "IPI manufacturero (INDEC)"),
+    "isac": (["actividad de la construcción", "isac"], "2023-01-01", "ISAC construcción (INDEC)"),
+    "pib_trim": (["producto interno bruto", "pib"], "2016-01-01", "PIB trimestral y componentes (INDEC)"),
+    "ipc_apertura": (["ipc", "núcleo", "nucleo", "regulados", "estacionales"], "2017-01-01", "IPC núcleo, regulados, estacionales (INDEC)"),
+}
 
 
 def get_json(url, tries=4):
@@ -82,6 +89,22 @@ def enumerar():
             log("catalogo %s: fallo (%r)" % (u, e))
     if cat is None:
         return enumerar_busqueda()
+    # distribuciones por titulo: agregarlas a DISTS con su identificador real
+    for clave, (palabras, desde, nota) in BUSCAR_TITULO.items():
+        hits = []
+        for ds in cat.get("dataset", []):
+            for dist in ds.get("distribution", []):
+                tit = ((dist.get("title") or "") + " " + (ds.get("title") or "")).lower()
+                if all(w.lower() in tit for w in palabras[:1]) and any(w.lower() in tit for w in palabras):
+                    did = str(dist.get("identifier", ""))
+                    if did and did not in DISTS and did not in hits:
+                        hits.append(did)
+        if hits:
+            log("%s: distribuciones por titulo -> %s" % (clave, ", ".join(hits[:6])))
+            for did in hits[:4]:
+                DISTS[did] = (desde, nota + " [" + clave + "]")
+        else:
+            log("%s: sin distribucion por titulo" % clave)
     out = {d: [] for d in DISTS}
     for ds in cat.get("dataset", []):
         for dist in ds.get("distribution", []):
