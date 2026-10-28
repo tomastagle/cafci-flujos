@@ -23,6 +23,9 @@ jobs:
       - name: Bajar y reducir BCRA
         run: python sync_bcra.py --check
 
+      - name: Series crudas para el Monitor Argentina (Argento)
+        run: python sync_monitor.py --check
+
       - name: Commit de los JSON macro
         run: |
           git config user.name "github-actions[bot]"
