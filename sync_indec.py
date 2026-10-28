@@ -13,7 +13,7 @@ Uso:  python sync_indec.py            # produce macro/monitor_macro.json
       python sync_indec.py --check    # imprime último dato por distribución
 """
 from __future__ import annotations
-import os, io, json, time, argparse, urllib.request, urllib.parse
+import os, io, json, time, argparse, urllib.request, urllib.parse, urllib.error
 from datetime import datetime, timezone
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "macro")
@@ -102,19 +102,30 @@ def enumerar():
     return out
 
 
+MALOS = []
+def _bajar_lote(sub, desde, vals):
+    """Baja un lote; ante 400 lo parte en mitades hasta aislar el id que la API rechaza (y lo saltea)."""
+    url = API + "?" + urllib.parse.urlencode({"ids": ",".join(sub), "start_date": desde, "limit": 5000, "format": "json"})
+    try:
+        j = get_json(url, tries=2)
+    except urllib.error.HTTPError as e:
+        if e.code == 400 and len(sub) > 1:
+            m = len(sub) // 2
+            _bajar_lote(sub[:m], desde, vals); _bajar_lote(sub[m:], desde, vals); return
+        MALOS.append(sub[0] if len(sub) == 1 else ",".join(sub)); return
+    for row in j.get("data", []):
+        f = row[0]
+        for i, v in zip(sub, row[1:]):
+            if v is not None:
+                vals[i].append([f, float(v)])
+    time.sleep(0.4)
+
+
 def bajar(ids, desde):
     """{id: [[fecha, valor], ...]} con la API de series (de a CHUNK ids, limit 5000)."""
     vals = {i: [] for i in ids}
     for k in range(0, len(ids), CHUNK):
-        sub = ids[k:k + CHUNK]
-        url = API + "?" + urllib.parse.urlencode({"ids": ",".join(sub), "start_date": desde, "limit": 5000, "format": "json"})
-        j = get_json(url)
-        for row in j.get("data", []):
-            f = row[0]
-            for i, v in zip(sub, row[1:]):
-                if v is not None:
-                    vals[i].append([f, float(v)])
-        time.sleep(0.5)
+        _bajar_lote(ids[k:k + CHUNK], desde, vals)
     return vals
 
 
@@ -149,6 +160,8 @@ def main():
             ult = max(ult, d[-1][0])
         meta_d[dist] = {"n": sum(1 for c in campos if vals.get(c["id"])), "ult": ult, "nota": nota}
         log("%s: %d series, último %s" % (dist, meta_d[dist]["n"], ult))
+    if MALOS:
+        log("ids rechazados por la API (salteados): " + ", ".join(MALOS[:40]) + (" ..." if len(MALOS) > 40 else ""))
     obj = {"meta": {"updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "fuente": "datos.gob.ar (sspm) series API",
                     "by": "sync_indec.py (GitHub Actions)", "distribuciones": meta_d, "log": LOG}, "series": series}
     p = os.path.join(OUT, "monitor_macro.json")
