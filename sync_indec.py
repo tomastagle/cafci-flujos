@@ -19,7 +19,8 @@ from datetime import datetime, timezone
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "macro")
 os.makedirs(OUT, exist_ok=True)
 HDR = {"User-Agent": "Mozilla/5.0 (monitor-argentina-sync)"}
-CATALOGO = "https://datos.gob.ar/catalog/sspm/data.json"
+CATALOGOS = ["https://infra.datos.gob.ar/catalog/sspm/data.json", "https://datos.gob.ar/catalog/sspm/data.json"]
+SEARCH = "https://apis.datos.gob.ar/series/api/search/"
 API = "https://apis.datos.gob.ar/series/api/series/"
 # distribución -> (desde, nota)
 DISTS = {
@@ -47,9 +48,40 @@ def get_json(url, tries=4):
             time.sleep(3 * (i + 1))
 
 
+def enumerar_busqueda():
+    """Plan B: API de búsqueda, filtrando por prefijo de distribución (q = texto de la nota)."""
+    out = {d: [] for d in DISTS}
+    for dist, (_, nota) in DISTS.items():
+        q = nota.split("(")[0].strip()
+        for offset in (0, 1000, 2000):
+            try:
+                j = get_json(SEARCH + "?" + urllib.parse.urlencode({"q": q, "limit": 1000, "offset": offset, "catalog_id": "sspm"}))
+            except Exception as e:
+                log("busqueda %s: fallo (%r)" % (dist, e)); break
+            rows = j.get("data", [])
+            for r in rows:
+                f = r.get("field", {}); fid = f.get("id", "")
+                if fid.startswith(dist + "_"):
+                    out[dist].append({"id": fid, "title": f.get("title", "") or f.get("description", ""), "units": f.get("units", ""),
+                                      "description": f.get("description", ""), "freq": f.get("frequency", "")})
+            if len(rows) < 1000:
+                break
+        # sin duplicados
+        seen = set(); out[dist] = [c for c in out[dist] if not (c["id"] in seen or seen.add(c["id"]))]
+        log("busqueda %s: %d series" % (dist, len(out[dist])))
+    return out
+
+
 def enumerar():
-    """{dist: [{"id","title","units","description"}]} a partir del data.json de sspm."""
-    cat = get_json(CATALOGO)
+    """{dist: [{"id","title","units","description"}]} a partir del data.json de sspm (o la busqueda, plan B)."""
+    cat = None
+    for u in CATALOGOS:
+        try:
+            cat = get_json(u); log("catalogo: " + u); break
+        except Exception as e:
+            log("catalogo %s: fallo (%r)" % (u, e))
+    if cat is None:
+        return enumerar_busqueda()
     out = {d: [] for d in DISTS}
     for ds in cat.get("dataset", []):
         for dist in ds.get("distribution", []):
@@ -62,6 +94,11 @@ def enumerar():
                     out[did].append({"id": fid, "title": f.get("title", ""), "units": f.get("units", ""),
                                      "description": f.get("description", ""),
                                      "freq": dist.get("accrualPeriodicity", ds.get("accrualPeriodicity", ""))})
+    if any(not v for v in out.values()):
+        alt = enumerar_busqueda()
+        for d in out:
+            if not out[d]:
+                out[d] = alt.get(d, [])
     return out
 
 
