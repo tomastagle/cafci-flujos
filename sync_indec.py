@@ -81,19 +81,28 @@ def bajar(ids, desde):
     return vals
 
 
+LOG = []
+def log(m):
+    LOG.append(str(m)); print(m)
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--check", action="store_true"); a = ap.parse_args()
-    enum = enumerar()
+    try:
+        enum = enumerar()
+        log("catalogo OK: " + ", ".join("%s=%d" % (d, len(v)) for d, v in enum.items()))
+    except Exception as e:
+        log("catalogo: fallo (%r)" % e); enum = {}
     series, meta_d = {}, {}
     for dist, (desde, nota) in DISTS.items():
         campos = enum.get(dist, [])
         if not campos:
-            print("%s: sin series en el catálogo (¿cambió el identificador?)" % dist); meta_d[dist] = {"n": 0, "nota": nota}; continue
+            log("%s: sin series en el catálogo (¿cambió el identificador?)" % dist); meta_d[dist] = {"n": 0, "nota": nota}; continue
         ids = [c["id"] for c in campos]
         try:
             vals = bajar(ids, desde)
         except Exception as e:
-            print("%s: fallo bajando (%s)" % (dist, e)); meta_d[dist] = {"n": 0, "nota": nota, "error": str(e)}; continue
+            log("%s: fallo bajando (%r)" % (dist, e)); meta_d[dist] = {"n": 0, "nota": nota, "error": repr(e)}; continue
         ult = ""
         for c in campos:
             d = vals.get(c["id"], [])
@@ -102,13 +111,20 @@ def main():
             series[c["id"]] = {"t": c["title"], "u": c["units"], "f": c["freq"], "dist": dist, "d": d}
             ult = max(ult, d[-1][0])
         meta_d[dist] = {"n": sum(1 for c in campos if vals.get(c["id"])), "ult": ult, "nota": nota}
-        print("%s: %d series, último %s" % (dist, meta_d[dist]["n"], ult))
+        log("%s: %d series, último %s" % (dist, meta_d[dist]["n"], ult))
     obj = {"meta": {"updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "fuente": "datos.gob.ar (sspm) series API",
-                    "by": "sync_indec.py (GitHub Actions)", "distribuciones": meta_d}, "series": series}
+                    "by": "sync_indec.py (GitHub Actions)", "distribuciones": meta_d, "log": LOG}, "series": series}
     p = os.path.join(OUT, "monitor_macro.json")
     json.dump(obj, io.open(p, "w", encoding="utf-8"), ensure_ascii=False)
     print("monitor_macro.json ->", p, "|", len(series), "series, %.1f MB" % (os.path.getsize(p) / 1e6))
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # nunca tirar abajo el job: dejar el diagnostico en el JSON
+        log("FALLO GENERAL: %r" % e)
+        p = os.path.join(OUT, "monitor_macro.json")
+        json.dump({"meta": {"updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "log": LOG, "error": repr(e)}, "series": {}},
+                  io.open(p, "w", encoding="utf-8"), ensure_ascii=False)
