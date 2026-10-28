@@ -26,6 +26,9 @@ jobs:
       - name: Series crudas para el Monitor Argentina (Argento)
         run: python sync_monitor.py --check
 
+      - name: Series de datos.gob.ar para el Monitor Argentina (Argento)
+        run: python sync_indec.py --check
+
       - name: Commit de los JSON macro
         run: |
           git config user.name "github-actions[bot]"
