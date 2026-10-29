@@ -29,10 +29,13 @@ jobs:
       - name: Series de datos.gob.ar para el Monitor Argentina (Argento)
         run: python sync_indec.py --check
 
+      - name: REM del BCRA (Ministro y Argento)
+        run: python sync_rem.py || echo "REM fallo, sigue"
+
       - name: Commit de los JSON macro
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add macro/*.json
+          git add macro/*.json macro/rem/ || true
           git commit -m "BCRA macro $(date -u +%F-%H%M)" || echo "sin cambios"
           git push
