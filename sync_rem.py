@@ -21,7 +21,7 @@ PAGINAS = [
 ]
 MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
-def get(url, timeout=60):
+def get(url, timeout=25):
     req = urllib.request.Request(url, headers=HDR)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read(), r.geturl()
@@ -66,7 +66,7 @@ def muestra(wb, filas=45, cols=16):
 
 def leer_medianas(wb):
     """Lector genérico: busca filas con el nombre de la variable y toma (período, mediana) de las filas siguientes."""
-    claves = {"ipc": r"precios minoristas|ipc", "tamar": r"tamar", "badlar": r"badlar", "tc": r"tipo de cambio",
+    claves = {"ipc": r"precios minoristas|ipc", "ipc_nucleo": r"n[uú]cleo", "tamar": r"tamar", "badlar": r"badlar", "tc": r"tipo de cambio",
               "pib": r"pib", "desempleo": r"desocupaci", "resultado_fiscal": r"resultado primario|fiscal"}
     out = {}
     for ws in wb.worksheets:
@@ -75,6 +75,7 @@ def leer_medianas(wb):
             celda = " ".join(str(v) for v in r[:3] if v is not None).lower()
             for k, pat in claves.items():
                 if k in out or not re.search(pat, celda): continue
+                if k == "ipc" and re.search(r"n[uú]cleo", celda): continue
                 # encabezado con "mediana" en las filas cercanas
                 for j in range(i, min(i + 4, len(filas))):
                     hdr = [str(v).lower() if v is not None else "" for v in filas[j]]
@@ -96,7 +97,11 @@ def main():
     os.makedirs(os.path.join(OUT, "rem"), exist_ok=True)
     diag, res = [], {"meta": {"updatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "by": "sync_rem.py (GitHub Actions)"}}
     url_ok, data = None, None
+    import time
+    t0 = time.time()
     for l in buscar_links(diag):
+        if time.time() - t0 > 240:
+            diag.append({"corte": "4 minutos sin encontrar el Excel"}); break
         try:
             b, final = get(l)
             if b[:2] == b"PK":   # xlsx
