@@ -2,7 +2,7 @@ name: BCRA macro diario
 
 on:
   schedule:
-    - cron: "0 12 * * 1-6"     # ~09:00 ART (lun-sab), tras publicar el BCRA
+    - cron: "23 11 * * 1-6"    # 08:23 ART (lun-sab); minuto raro: GitHub demora horas los crons en :00
   workflow_dispatch:            # correr a mano desde la pestaña Actions
 
 jobs:
