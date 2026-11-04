@@ -29,6 +29,14 @@ jobs:
       - name: Series de datos.gob.ar para el Monitor Argentina (Argento)
         run: python sync_indec.py --check
 
+      - name: Promedios mensuales de la solapa Monetaria (Argento, bloques/MON)
+        run: python sync_monitor_mon.py || echo "monitor_mon fallo, sigue"
+
+      - name: API del INDEC (IPC con aperturas, EMAE, IPI, salarios, SIPM, canastas, EPH, pobreza)
+        env:
+          INDEC_TOKEN: ${{ secrets.INDEC_TOKEN }}
+        run: python sync_indec_api.py --check || echo "INDEC API fallo, sigue"
+
       - name: REM del BCRA (Ministro y Argento)
         run: python sync_rem.py || echo "REM fallo, sigue"
 
