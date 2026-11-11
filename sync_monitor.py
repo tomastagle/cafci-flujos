@@ -70,6 +70,10 @@ IDS = {
     "82": "Variación de reservas por otros",
     "1187": "Piso de la banda cambiaria",
     "1188": "Techo de la banda cambiaria",
+    # 11-nov-2026: series de la solapa Cambiaria (reservas netas) que solo estaban embebidas
+    "84": "Tipo de cambio de valuación contable",
+    "1254": "Depósitos y otros pasivos monetarios en moneda extranjera en el BCRA",
+    "1266": "Depósitos del gobierno en el BCRA en moneda extranjera",
 }
 MENSUALES = {"27", "28"}
 IPC_URL = ("https://apis.datos.gob.ar/series/api/series/?ids=148.3_INIVELNAL_DICI_M_26"
