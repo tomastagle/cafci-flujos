@@ -130,6 +130,9 @@ DATASETS = [
      "periodo,region,clasificador,nivel,codigo,tipo_de_indicador", _ipc, "IPC por categoría y división (Nacional, GBA)"),
     ("ipc_nacional", "nivel=eq.Nivel General&periodo=gte.201701",
      "periodo,region,tipo_de_indicador", _ipc, "IPC nivel general por región"),
+    # GBA por grupo y clase (11-nov-2026): pesos efectivos y composicion de regulados en la solapa Precios del Monitor Argentina
+    ("ipc_nacional", "region=eq.GBA&nivel=in.(Grupo,Clase)&tipo_de_indicador=in.(Indice,v_m)&periodo=gte.201701",
+     "periodo,region,clasificador,nivel,codigo,tipo_de_indicador", _ipc, "IPC GBA por grupo y clase"),
     ("estimador-mensual-de-actividad-economica-nivel-general", "", "periodo,tipo_de_indicador_descripcion", _emae, "EMAE nivel general"),
     ("estimador-mensual-de-actividad-economica-sectores", "periodo=gte.201701", "periodo,codigo,tipo_de_indicador", _emae_sec, "EMAE por sector"),
     ("ipi_manufacturero", "periodo=gte.202101", "periodo,cuadro_web,codigo_CLaNAE_2004,serie,tipo_de_indicador", _ipi, "IPI manufacturero"),
