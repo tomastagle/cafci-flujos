@@ -37,6 +37,9 @@ jobs:
           INDEC_TOKEN: ${{ secrets.INDEC_TOKEN }}
         run: python sync_indec_api.py --check || echo "INDEC API fallo, sigue"
 
+      - name: Empleo y social (SIPA de Trabajo, puestos INDEC, EPH, salarios) para Argento, bloques/EMP
+        run: python sync_empleo.py --check || echo "empleo fallo, sigue"
+
       - name: REM del BCRA (Ministro y Argento)
         run: python sync_rem.py || echo "REM fallo, sigue"
 
