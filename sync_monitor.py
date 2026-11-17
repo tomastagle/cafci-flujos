@@ -74,6 +74,8 @@ IDS = {
     "84": "Tipo de cambio de valuación contable",
     "1254": "Depósitos y otros pasivos monetarios en moneda extranjera en el BCRA",
     "1266": "Depósitos del gobierno en el BCRA en moneda extranjera",
+    # 17-nov-2026: depositos del Tesoro en pesos (solapa Cambiaria y parte diario)
+    "1265": "Depósitos del gobierno en el BCRA en pesos",
 }
 MENSUALES = {"27", "28"}
 IPC_URL = ("https://apis.datos.gob.ar/series/api/series/?ids=148.3_INIVELNAL_DICI_M_26"

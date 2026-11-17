@@ -328,19 +328,153 @@ def build_itcrm():
     wb = load_workbook(io.BytesIO(_download("ITCRMSerie.xlsx")), data_only=True)
     ws = wb["ITCRM y bilaterales"]
     rows = []
+    # 17-nov-2026: tambien los bilaterales que usa el Monitor Argentina (Brasil, EEUU, China, Zona Euro), para
+    # que la solapa Cambiaria tenga el ITCRM diario al dia (bloques/CAMD, clave itcrm). Columnas por encabezado.
+    BIL = (("Brasil", "Brasil"), ("EEUU", "Estados"), ("China", "China"), ("Euro", "Zona Eur"))
+    cols = None; bilat = []
+    num = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
     for row in ws.iter_rows(values_only=True):
         if not row or len(row) < 2:
             continue
+        if cols is None and isinstance(row[0], str) and row[0].strip().lower().startswith("per"):
+            hd = [str(c or "") for c in row]
+            idx = [next((i for i, h in enumerate(hd) if clave in h), None) for _n, clave in BIL]
+            cols = idx if all(i is not None for i in idx) else []
+            continue
         f = _as_date(row[0]); v = row[1]
-        if f and isinstance(v, (int, float)) and not isinstance(v, bool):
+        if f and num(v):
             rows.append([f, round(v, 6)])
+            if cols and all(i < len(row) and num(row[i]) for i in cols):
+                bilat.append([f, round(v, 3)] + [round(row[i], 3) for i in cols])
     wb.close()
-    rows.sort()
+    rows.sort(); bilat.sort()
     w("itcrm_topup.json", {"meta": {"fuente": "ITCRMSerie.xlsx (BCRA), hoja 'ITCRM y bilaterales'",
                                     "actualizado": date.today().isoformat(),
                                     "nota": "incluye dias no habiles; el merge filtra por fechas con TCN; ultimas 60 filas para captar revisiones"},
-                          "itcrm": rows[-60:]})
+                          "itcrm": rows[-60:],
+                          "bilat": {"cols": ["ITCRM"] + [n for n, _c in BIL], "d": bilat[-60:]}})
     return rows[-1] if rows else None
+
+# ---------------------------------------------------------------- ITCRM estimado (17-nov-2026)
+COT_BASE = "https://api.bcra.gob.ar/estadisticascambiarias/v1.0/Cotizaciones/"
+ITCRM_PARES = (("Brasil", "BRL"), ("Canad", "CAD"), ("Chile", "CLP"), ("Estados", "USD"), ("xico", "MXN"),
+               ("Uruguay", "UYU"), ("China", "CNY"), ("India", "INR"), ("Jap", "JPY"), ("Reino", "GBP"),
+               ("Suiza", "CHF"), ("Zona Euro", "EUR"), ("Vietnam", "VND"))
+
+def _cotiz(cod, desde, hasta):
+    """{fecha: pesos por unidad} de una moneda (BCRA, API Estadisticas Cambiarias, tipo de cotizacion)."""
+    out = {}
+    url = "%s%s?fechadesde=%s&fechahasta=%s&limit=1000" % (COT_BASE, cod, desde, hasta)
+    for intento in range(4):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=HDR), timeout=60) as r:
+                j = json.loads(r.read().decode("utf-8"))
+            for x in j.get("results") or []:
+                for d in x.get("detalle") or []:
+                    if d.get("tipoCotizacion"):
+                        out[x["fecha"][:10]] = float(d["tipoCotizacion"])
+            return out
+        except Exception:
+            if intento == 3:
+                return out
+            time.sleep(2 * (intento + 1))
+    return out
+
+def _itcrm_estimar(of, pesos, cot, ipc, t0, hasta, meses=6):
+    """Extiende el ITCRM oficial desde t0 hasta `hasta`.
+    ITCRM = canasta nominal de monedas (pesos por unidad, ponderada) x precios externos / precios locales.
+      - canasta nominal: cotizaciones diarias del BCRA con los ponderadores vigentes del ITCRM;
+      - precios locales: IPC mensual (id 27) devengado dia a dia; el mes sin dato repite el ultimo publicado;
+      - precios externos: la tasa diaria que cierra la identidad con el ITCRM oficial en los `meses` previos a t0.
+    Devuelve (filas [[fecha, valor]], tasa diaria de precios externos, monedas usadas)."""
+    import calendar, math
+    from datetime import date as _date, timedelta as _td
+    D = lambda s: _date.fromisoformat(s)
+    a0 = max(f for f in of if f <= (D(t0) - _td(days=30 * meses)).isoformat())
+    dias = []
+    d = D(a0)
+    while d <= D(hasta):
+        dias.append(d.isoformat()); d += _td(days=1)
+    usar = [c for c in pesos if len(cot.get(c, {})) > 20 and min(cot[c]) <= a0]
+    wsum = sum(pesos[c] for c in usar)
+    ff = {}
+    for c in usar:
+        ult = None; ff[c] = {}
+        for f in sorted(set(dias) | set(cot[c])):
+            if f in cot[c]: ult = cot[c][f]
+            if ult is not None: ff[c][f] = ult
+    def N(f):
+        return math.exp(sum(pesos[c] / wsum * math.log(ff[c][f]) for c in usar))
+    ipm = {f[:7]: v / 100.0 for f, v in ipc.items()}
+    ultp = ipm[max(ipm)]
+    def P(f):   # indice de precios local, devengo geometrico dentro del mes
+        x = 1.0; y, m = int(a0[:4]), int(a0[5:7])
+        fy, fm, fd = int(f[:4]), int(f[5:7]), int(f[8:10])
+        while (y, m) < (fy, fm):
+            x *= 1 + ipm.get("%04d-%02d" % (y, m), ultp); y, m = (y, m + 1) if m < 12 else (y + 1, 1)
+        return x * (1 + ipm.get("%04d-%02d" % (fy, fm), ultp)) ** (fd / calendar.monthrange(fy, fm)[1])
+    n = (D(t0) - D(a0)).days
+    g = ((of[t0] / of[a0]) * (P(t0) / P(a0)) / (N(t0) / N(a0))) ** (1.0 / n) - 1
+    usd = cot.get("USD", {})
+    filas = []
+    for f in dias:
+        if f <= t0 or f not in usd:      # solo ruedas (dias con cotizacion del dolar)
+            continue
+        k = (D(f) - D(t0)).days
+        filas.append([f, round(of[t0] * (N(f) / N(t0)) * (1 + g) ** k / (P(f) / P(t0)), 3)])
+    return filas, g, usar
+
+def build_itcrm_est():
+    """ITCRM diario ESTIMADO desde el ultimo dato oficial hasta hoy (el BCRA lo publica con rezago), con control:
+    la misma cuenta parada tantos dias antes del ultimo oficial como rezago hay hoy, contra el oficial."""
+    from openpyxl import load_workbook
+    from datetime import date as _date, timedelta as _td
+    wb = load_workbook(io.BytesIO(_download("ITCRMSerie.xlsx")), data_only=True)
+    num = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
+    of = {}
+    for row in wb["ITCRM y bilaterales"].iter_rows(values_only=True):
+        if row and len(row) > 1 and _as_date(row[0]) and num(row[1]):
+            of[_as_date(row[0])] = float(row[1])
+    hd = None; ult = None
+    for row in wb["Ponderadores"].iter_rows(values_only=True):
+        if not row: continue
+        if hd is None and isinstance(row[0], str) and row[0].strip().lower().startswith("per"):
+            hd = [str(c or "") for c in row]; continue
+        if hd and _as_date(row[0]) and num(row[1]):
+            ult = row
+    wb.close()
+    pesos = {}
+    for clave, cod in ITCRM_PARES:
+        i = next((j for j, h in enumerate(hd) if clave in h), None)
+        if i is not None and num(ult[i]):
+            pesos[cod] = float(ult[i])
+    t0 = max(of); hoy = _date.today().isoformat()
+    rez = (_date.fromisoformat(hoy) - _date.fromisoformat(t0)).days
+    desde = (_date.fromisoformat(t0) - _td(days=30 * 6 + rez + 45)).isoformat()
+    cot = {}
+    for cod in pesos:
+        cot[cod] = _cotiz(cod, desde, hoy); time.sleep(0.3)
+    ipc = serie(27, desde=(_date.fromisoformat(desde) - _td(days=62)).isoformat())
+    filas, g, usar = _itcrm_estimar(of, pesos, cot, ipc, t0, hoy)
+    # control: parar la cuenta `rez` dias antes del ultimo oficial y comparar contra el oficial
+    tb = max(f for f in of if f <= (_date.fromisoformat(t0) - _td(days=max(rez, 20))).isoformat())
+    ofb = {f: v for f, v in of.items() if f <= tb}
+    fb, _g, _u = _itcrm_estimar(ofb, pesos, cot, {f: v for f, v in ipc.items() if f <= tb}, tb, t0)
+    errs = [(f, v / of[f] - 1) for f, v in fb if f in of]
+    ctrl = {"desde": tb, "hasta": errs[-1][0] if errs else None, "ruedas": len(errs),
+            "error_final_pct": round(errs[-1][1] * 100, 2) if errs else None,
+            "error_max_abs_pct": round(max(abs(e) for _f, e in errs) * 100, 2) if errs else None}
+    p = os.path.join(OUT, "itcrm_topup.json")
+    obj = json.load(open(p, encoding="utf-8"))
+    obj["estimado"] = {
+        "desde_oficial": t0, "oficial": round(of[t0], 3), "d": filas,
+        "monedas": usar, "peso_cubierto_pct": round(sum(pesos[c] for c in usar), 1),
+        "precios_externos_tasa_diaria": g, "ipc_ultimo": max(ipc), "control": ctrl,
+        "metodo": ("ITCRM oficial del ultimo dato x variacion de la canasta nominal de monedas (cotizaciones BCRA, "
+                   "ponderadores vigentes del ITCRM) x precios externos (tasa que cierra la identidad en los seis meses "
+                   "previos) / precios locales (IPC mensual devengado por dia; el mes sin dato repite el ultimo publicado)")}
+    w("itcrm_topup.json", obj)
+    return (filas[-1] if filas else None), ctrl
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--check", action="store_true"); a = ap.parse_args()
@@ -349,6 +483,10 @@ def main():
     build_monetario(); build_monetario_ext(); build_reservas(); build_usd_cer(); build_bm_componentes()
     print("stock_otros ult", build_stock_otros())
     print("itcrm ult", build_itcrm())
+    try:
+        print("itcrm estimado", build_itcrm_est())
+    except Exception as e:
+        print("itcrm estimado: fallo (%r); sigue" % e)
     print("Listo.")
     if a.check:
         for n in ("bcra_series", "monetario", "monetario_ext", "reservas", "reservas_ext", "usd_cer",
