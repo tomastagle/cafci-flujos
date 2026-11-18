@@ -18,7 +18,7 @@ jobs:
           python-version: "3.11"
 
       - name: Instalar dependencias
-        run: pip install openpyxl
+        run: pip install openpyxl xlrd
 
       - name: Bajar y reducir BCRA
         run: python sync_bcra.py --check
@@ -39,6 +39,9 @@ jobs:
 
       - name: Empleo y social (SIPA de Trabajo, puestos INDEC, EPH, salarios) para Argento, bloques/EMP
         run: python sync_empleo.py --check || echo "empleo fallo, sigue"
+
+      - name: Nafta contra Brent (Energia, EIA, BCRA, INDEC) para Argento, bloques/NAF
+        run: python sync_nafta.py || echo "nafta fallo, sigue"
 
       - name: REM del BCRA (Ministro y Argento)
         run: python sync_rem.py || echo "REM fallo, sigue"
