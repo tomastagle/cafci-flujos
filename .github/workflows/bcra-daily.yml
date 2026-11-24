@@ -29,6 +29,9 @@ jobs:
       - name: Series de datos.gob.ar para el Monitor Argentina (Argento)
         run: python sync_indec.py --check
 
+      - name: Resultado fiscal directo de Hacienda (completa 379.9 sin esperar a datos.gob.ar)
+        run: python sync_fiscal.py --check || echo "fiscal directo fallo, sigue"
+
       - name: Promedios mensuales de la solapa Monetaria (Argento, bloques/MON)
         run: python sync_monitor_mon.py || echo "monitor_mon fallo, sigue"
 
