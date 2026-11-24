@@ -32,6 +32,9 @@ jobs:
       - name: Resultado fiscal directo de Hacienda (completa 379.9 sin esperar a datos.gob.ar)
         run: python sync_fiscal.py --check || echo "fiscal directo fallo, sigue"
 
+      - name: ICA directo del INDEC (completa 74.3 y 76.3 sin esperar a datos.gob.ar)
+        run: python sync_ica.py --check || echo "ICA directo fallo, sigue"
+
       - name: Promedios mensuales de la solapa Monetaria (Argento, bloques/MON)
         run: python sync_monitor_mon.py || echo "monitor_mon fallo, sigue"
 
