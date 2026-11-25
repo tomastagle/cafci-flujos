@@ -1,6 +1,6 @@
 {
  "meta": {
-  "updatedAt": "2026-11-24T21:57Z",
+  "updatedAt": "2026-11-25T21:06Z",
   "by": "sync_rem.py (GitHub Actions)",
   "diag": [
    {
@@ -16,7 +16,7 @@
    {
     "pagina": "https://www.bcra.gob.ar/relevamiento-de-expectativas-de-mercado-rem/",
     "ok": false,
-    "error": "<HTTPError 503: 'Service Unavailable'>"
+    "error": "<HTTPError 404: 'Not Found'>"
    },
    {
     "pagina": "https://www.bcra.gob.ar/publicaciones-estadisticas/relevamiento-de-expectativas-de-mercado-rem/",
